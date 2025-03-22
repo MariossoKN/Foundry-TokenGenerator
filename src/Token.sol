@@ -14,7 +14,6 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract Token is ERC20 {
     address private immutable i_tokenCreator;
     address private immutable i_tokenGenerator;
-    uint256 private s_currentFundedAmount;
 
     error Token__ExceededTheMaxFundedAmount();
 
@@ -36,16 +35,13 @@ contract Token is ERC20 {
     /**
      * @dev
      */
-    function buy() external payable {
-        s_currentFundedAmount += msg.value;
-    }
+    function buy() external payable {}
 
     ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
-
-    function getCurrentFundedAmount() public view returns (uint256) {
-        return s_currentFundedAmount;
+    function getTokenCreator() public view returns (address) {
+        return i_tokenCreator;
     }
     /////////////////////////////
     // EXTERNAL VIEW FUNCTIONS //
