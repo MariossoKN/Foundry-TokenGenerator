@@ -44,7 +44,7 @@ contract TokenGenerator {
     error TokenGenerator__OnlyOwnerCanWithdraw();
     error TokenGenerator__ValueSentWrong(uint256);
     error TokenGenerator__ValueSentIsLow();
-    error TokenGenerator__SaleEnded();
+    error TokenGenerator__AmountExceedsTheFundGoal();
     error TokenGenerator__FundingGoalReached();
     error TokenGenerator__TokenAmountTooLow();
     error TokenGenerator__FundGoalTooLow();
@@ -90,10 +90,11 @@ contract TokenGenerator {
         if (_tokenAmount < 1 ether) {
             revert TokenGenerator__TokenAmountTooLow();
         }
+
         uint256 fundGoal = getTokenFundGoal(_tokenAddress);
         Token token = Token(_tokenAddress);
         if (address(token).balance > fundGoal) {
-            revert TokenGenerator__SaleEnded();
+            revert TokenGenerator__AmountExceedsTheFundGoal();
         }
 
         uint256 costOfTokens = calculateTokensCost(_tokenAddress, _tokenAmount);
@@ -158,6 +159,16 @@ contract TokenGenerator {
         address _tokenAddress
     ) public view returns (uint256) {
         return s_tokenData[_tokenAddress].fundGoal;
+    }
+
+    function getRemainingFundingAmount(
+        address _tokenAddress
+    ) public view returns (uint256) {
+        uint256 fundGoal = getTokenFundGoal(_tokenAddress);
+        if (fundGoal < _tokenAddress.balance) {
+            return 0;
+        }
+        return fundGoal - _tokenAddress.balance;
     }
 
     function getTokenTokensSold(
