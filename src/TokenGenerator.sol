@@ -48,6 +48,7 @@ contract TokenGenerator {
     error TokenGenerator__FundingGoalReached();
     error TokenGenerator__TokenAmountTooLow();
     error TokenGenerator__FundGoalTooLow();
+    error TokenGenerator__WrongTokenAddress();
 
     /**
      * @dev
@@ -74,7 +75,7 @@ contract TokenGenerator {
         }
         Token newToken = new Token(_name, _symbol, _tokenSupply, msg.sender);
         s_tokens.push(address(newToken));
-        s_tokenData[address(newToken)] = TokenData(msg.sender, 0, _fundGoal);
+        s_tokenData[address(newToken)] = TokenData(msg.sender, 1, _fundGoal);
 
         emit TokenCreated(address(newToken), _tokenSupply, msg.sender);
     }
@@ -83,23 +84,24 @@ contract TokenGenerator {
         address _tokenAddress,
         uint256 _tokenAmount
     ) external payable {
-        if (_tokenAmount <= 1 ether) {
+        if (getTokenCreator(_tokenAddress) == address(0)) {
+            revert TokenGenerator__WrongTokenAddress();
+        }
+        if (_tokenAmount < 1 ether) {
             revert TokenGenerator__TokenAmountTooLow();
         }
-
         uint256 fundGoal = getTokenFundGoal(_tokenAddress);
         Token token = Token(_tokenAddress);
         if (address(token).balance > fundGoal) {
             revert TokenGenerator__SaleEnded();
         }
 
-        uint256 basePrice = calculateNewBasePrice(_tokenAddress);
-        uint256 costOfTokens = calculateTokenCost(_tokenAmount, basePrice);
+        uint256 costOfTokens = calculateTokensCost(_tokenAddress, _tokenAmount);
         if (msg.value < costOfTokens) {
             revert TokenGenerator__ValueSentWrong(costOfTokens);
         }
 
-        s_tokenData[_tokenAddress].tokensSold += _tokenAmount;
+        s_tokenData[_tokenAddress].tokensSold += 1;
 
         token.buy{value: msg.value};
         token.transfer(msg.sender, _tokenAmount);
@@ -118,55 +120,18 @@ contract TokenGenerator {
     ///////////////////////////
     // PUBLIC PURE FUNCTIONS //
     ///////////////////////////
-    function calculateTokenCost(
-        uint256 _tokenAmount,
-        uint256 _basePrice
-    ) public pure returns (uint256) {
-        // basePrice = 0.1;   tokenAmount = 10
-        //
-        // baseCost = 10 * 0.1 = 1
-        // incrementCost = (0.1 * (10 * (10 - 1))) / 2 = 4.5
-        // 1 + 4.5 = 5.5
-
-        // basePrice = 1;   tokenAmount = 10
-        //
-        // baseCost = 10 * 1 = 10
-        // incrementCost = (1 * (10 * (10 - 1))) / 2 = 45
-        // 10 + 45 = 55
-
-        // basePrice = 1;   tokenAmount = 20
-        //
-        // baseCost = 20 * 1 = 20
-        // incrementCost = (1 * (20 * (20 - 1))) / 2 = 190
-        // 20 + 190 = 210
-        uint256 baseCost = _tokenAmount * _basePrice;
-        uint256 incrementCost = (_basePrice *
-            (_tokenAmount * (_tokenAmount - 1))) / 2;
-        return baseCost + incrementCost;
-    }
-
-    function calculateNewBasePrice(
-        address _tokenAddress
-    ) public view returns (uint256) {
-        uint256 basePrice = 0.0001 ether;
-        uint256 tokensSold = getTokenTokensSold(_tokenAddress);
-        // basePrice = 0.1;   tokenAmount = 10
-        //
-        // (10 * 0.1) + 0.1 = 1.1
-
-        // basePrice = 1;   tokenAmount = 10
-        //
-        // (10 * 1) + 1 = 11
-
-        // basePrice = 1;   tokenAmount = 20
-        //
-        // (20 * 1) + 1 = 21
-        return (tokensSold * basePrice) + basePrice;
-    }
 
     ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
+    function calculateTokensCost(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) public view returns (uint256) {
+        uint256 tokensSold = getTokenTokensSold(_tokenAddress);
+        return (tokensSold * 0.0001 ether) * (_tokenAmount / 10 ** 18);
+    }
+
     function getTokensAmount() public view returns (uint256) {
         return s_tokens.length;
     }
