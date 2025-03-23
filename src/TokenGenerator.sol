@@ -103,7 +103,7 @@ contract TokenGenerator {
 
         s_tokenData[_tokenAddress].tokensSold += 1;
 
-        token.buy{value: msg.value};
+        token.buy{value: msg.value}();
         token.transfer(msg.sender, _tokenAmount);
 
         emit TokenBuy(address(_tokenAddress), _tokenAmount, msg.sender);
