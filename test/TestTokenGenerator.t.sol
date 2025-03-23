@@ -16,26 +16,42 @@ contract TestTokenGenerator is Test {
         address indexed tokenCreator
     );
 
+    event TokenBuy(
+        address indexed tokenAddress,
+        uint256 indexed tokenAmountBought,
+        address buyer
+    );
+
     TokenGenerator public tokenGenerator;
     HelperConfig public helperConfig;
 
     uint256 public fee;
     uint256 deployerKey;
 
+    address tokenAddress;
+
+    uint256 STARTING_INCREMENT = 0.0001 ether; // change if defined differently in the TokenGenerator contract
+    uint256 INCREMENT_TWO = STARTING_INCREMENT * 2;
+    uint256 INCREMENT_THREE = STARTING_INCREMENT * 3;
+
     address TOKEN_GENERATOR_OWNER = makeAddr("tokenGeneratorOwner");
     address TOKEN_OWNER = makeAddr("tokenOwner");
-    address INVESTOR = makeAddr("investor");
-    address INVESTOR2 = makeAddr("investor2");
-    address INVESTOR3 = makeAddr("investor3");
+    address BUYER = makeAddr("buyer");
+    address BUYER2 = makeAddr("buyer2");
+    address BUYER3 = makeAddr("buyer3");
+    address BUYER4 = makeAddr("buyer4");
     uint256 STARTING_BALANCE = 100 ether;
 
     string TOKEN_NAME = "Happy Token";
     string TOKEN_SYMBOL = "HTK";
     uint256 TOKEN_SUPPLY = 1000000 ether;
-    uint256 TOKEN_FUND_GOAL = 1000 ether;
+    uint256 TOKEN_FUND_GOAL = 100 ether;
     uint256 INCORRECT_FUND_GOAL = 99 ether;
-    uint256 INVESTMENT_ONE = 5 ether;
-    uint256 INVESTMENT_TWO = 50 ether;
+
+    uint256 TOKEN_AMOUNT_ONE = 10200 ether;
+    uint256 TOKEN_AMOUNT_TWO = 22500 ether;
+    uint256 TOKEN_AMOUNT_THREE = 55200 ether;
+    uint256 TOKEN_AMOUNT_FOUR = 105000 ether;
 
     function setUp() external {
         DeployTokenGenerator deployTokenGenerator = new DeployTokenGenerator();
@@ -44,14 +60,27 @@ contract TestTokenGenerator is Test {
 
         vm.deal(TOKEN_GENERATOR_OWNER, STARTING_BALANCE * 5);
         vm.deal(TOKEN_OWNER, STARTING_BALANCE * 5);
-        vm.deal(INVESTOR, STARTING_BALANCE);
-        vm.deal(INVESTOR2, STARTING_BALANCE);
-        vm.deal(INVESTOR3, STARTING_BALANCE);
+        vm.deal(BUYER, STARTING_BALANCE);
+        vm.deal(BUYER2, STARTING_BALANCE);
+        vm.deal(BUYER3, STARTING_BALANCE);
+        vm.deal(BUYER4, STARTING_BALANCE);
     }
 
     //////////////////////
     // helper functions //
     //////////////////////
+    function createToken() public {
+        vm.prank(TOKEN_OWNER);
+
+        tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL,
+            TOKEN_SUPPLY,
+            TOKEN_FUND_GOAL
+        );
+
+        tokenAddress = tokenGenerator.getToken(0);
+    }
 
     //////////////////////
     // constructor TEST //
@@ -107,12 +136,12 @@ contract TestTokenGenerator is Test {
             TOKEN_FUND_GOAL
         );
 
-        address token = tokenGenerator.getToken(0);
+        address newToken = tokenGenerator.getToken(0);
 
-        string memory tokenName = Token(token).name();
-        string memory tokenSymbol = Token(token).symbol();
-        uint256 tokenSupply = Token(token).totalSupply();
-        address tokenCreator = Token(token).getTokenCreator();
+        string memory tokenName = Token(newToken).name();
+        string memory tokenSymbol = Token(newToken).symbol();
+        uint256 tokenSupply = Token(newToken).totalSupply();
+        address tokenCreator = Token(newToken).getTokenCreator();
 
         assertEq(tokenName, TOKEN_NAME);
         assertEq(tokenSymbol, TOKEN_SYMBOL);
@@ -129,15 +158,15 @@ contract TestTokenGenerator is Test {
             TOKEN_FUND_GOAL
         );
 
-        address token = tokenGenerator.getToken(0);
+        address newToken = tokenGenerator.getToken(0);
 
-        address creator = tokenGenerator.getTokenCreator(token);
-        uint256 fundGoal = tokenGenerator.getTokenFundGoal(token);
-        uint256 tokensSold = tokenGenerator.getTokenTokensSold(token);
+        address creator = tokenGenerator.getTokenCreator(newToken);
+        uint256 fundGoal = tokenGenerator.getTokenFundGoal(newToken);
+        uint256 tokensSold = tokenGenerator.getTokenTokensSold(newToken);
 
         assertEq(creator, TOKEN_OWNER);
         assertEq(fundGoal, TOKEN_FUND_GOAL);
-        assertEq(tokensSold, 0);
+        assertEq(tokensSold, 1);
     }
 
     function testShouldEmitEventAfterCreatingToken() public {
@@ -154,5 +183,366 @@ contract TestTokenGenerator is Test {
             TOKEN_SUPPLY,
             TOKEN_FUND_GOAL
         );
+    }
+
+    ////////////////////
+    // buyToken TESTs //
+    ////////////////////
+    function testShouldRevertIfWrongAddressIsProvided() public {
+        createToken();
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__WrongTokenAddress.selector
+            )
+        );
+        tokenGenerator.buyToken{value: tokenCost}(
+            TOKEN_OWNER,
+            TOKEN_AMOUNT_ONE
+        );
+    }
+
+    function testShouldRevertIfTokenAmountIsZero() public {
+        createToken();
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenAmountTooLow.selector
+            )
+        );
+        tokenGenerator.buyToken{value: tokenCost}(tokenAddress, 0);
+    }
+
+    function testShouldRevertIfFundGoalAlreadyRaised() public {
+        createToken();
+
+        // buyer one ~ 21 ETH
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        // buyer two ~ 63 ETH
+        uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostTwo}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        // buyer three ~ 126 ETH
+        uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        vm.prank(BUYER3);
+        tokenGenerator.buyToken{value: tokenCostThree}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR * 2
+        );
+
+        // buyer four (exceeding the goal)
+        uint256 tokenCostFour = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.prank(BUYER4);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__SaleEnded.selector
+            )
+        );
+        tokenGenerator.buyToken{value: tokenCostFour}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+    }
+
+    function testFuzz_ShouldRevertIfAmountSentIsLow(uint256 _amount) public {
+        createToken();
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        uint256 incorrectTokenCost = bound(_amount, 1, tokenCost - 1);
+
+        vm.prank(BUYER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ValueSentWrong.selector,
+                tokenCost
+            )
+        );
+        tokenGenerator.buyToken{value: incorrectTokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+    }
+
+    function testShouldUpdateTheSalesForTheToken() public {
+        createToken();
+
+        // buy #1
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 2);
+
+        // buy #2
+        uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostTwo}(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 3);
+
+        // buy #3
+        uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostThree}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 4);
+    }
+
+    function testShouldSendEthToTheTokenContract() public {
+        createToken();
+
+        assertEq(tokenAddress.balance, 0);
+
+        // buy #1
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        assertEq(tokenAddress.balance, tokenCost);
+
+        // buy #2
+        uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostTwo}(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(tokenAddress.balance, tokenCost + tokenCostTwo);
+
+        // buy #3
+        uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostThree}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(
+            tokenAddress.balance,
+            tokenCost + tokenCostTwo + tokenCostThree
+        );
+    }
+
+    function testShouldSendTheTokensAmountToTheBuyer() public {
+        createToken();
+
+        // buy #1
+        assertEq(Token(tokenAddress).balanceOf(BUYER), 0);
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        assertEq(Token(tokenAddress).balanceOf(BUYER), TOKEN_AMOUNT_FOUR);
+
+        // buy #2
+        assertEq(Token(tokenAddress).balanceOf(BUYER2), 0);
+
+        uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostTwo}(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(Token(tokenAddress).balanceOf(BUYER2), TOKEN_AMOUNT_TWO);
+
+        // buy #3
+        assertEq(Token(tokenAddress).balanceOf(BUYER3), 0);
+
+        uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        vm.prank(BUYER3);
+        tokenGenerator.buyToken{value: tokenCostThree}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(Token(tokenAddress).balanceOf(BUYER3), TOKEN_AMOUNT_ONE);
+    }
+
+    function testShouldEmitAnEvent() public {
+        createToken();
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+
+        vm.prank(BUYER);
+        vm.expectEmit(true, true, true, false);
+        emit TokenBuy(tokenAddress, TOKEN_AMOUNT_FOUR, BUYER);
+
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_FOUR
+        );
+    }
+
+    ///////////////////////////////
+    // calculateTokensCost TESTs //
+    ///////////////////////////////
+    function testShouldCalculatePriceOfTokensWithZeroPurchases() public {
+        createToken();
+
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(STARTING_INCREMENT * (TOKEN_AMOUNT_ONE / 10 ** 18), tokenCost);
+    }
+
+    function testShouldCalculatePriceOfTokensWithMultiplePurchases() public {
+        createToken();
+
+        // purchase #1
+        uint256 tokenCost = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(STARTING_INCREMENT * (TOKEN_AMOUNT_ONE / 10 ** 18), tokenCost);
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: tokenCost}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        // purchase #2
+        uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(INCREMENT_TWO * (TOKEN_AMOUNT_ONE / 10 ** 18), tokenCostTwo);
+
+        vm.prank(BUYER2);
+        tokenGenerator.buyToken{value: tokenCostTwo}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        // purchase #3
+        uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(
+            INCREMENT_THREE * (TOKEN_AMOUNT_TWO / 10 ** 18),
+            tokenCostThree
+        );
+
+        vm.prank(BUYER3);
+        tokenGenerator.buyToken{value: tokenCostThree}(
+            tokenAddress,
+            TOKEN_AMOUNT_TWO
+        );
+    }
+
+    ////////////////////////////
+    // getTokenFundGoal TESTs //
+    ////////////////////////////
+    function testShouldGetFundingGoal() public {
+        createToken();
+
+        uint256 expectedFundGoal = tokenGenerator.getTokenFundGoal(
+            tokenAddress
+        );
+
+        assertEq(expectedFundGoal, TOKEN_FUND_GOAL);
     }
 }
