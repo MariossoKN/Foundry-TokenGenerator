@@ -26,7 +26,7 @@ contract HelperConfig is Script {
 
     function getMainNetEthConfig() public view returns (NetworkConfig memory) {
         NetworkConfig memory mainNetNetworkConfig = NetworkConfig({
-            fee: 100000000000000000, // 0.1 ETH
+            fee: 1000000000000000, // 0.001 ETH
             deployerKey: vm.envUint("PRIVATE_KEY")
         });
         return mainNetNetworkConfig;
@@ -34,7 +34,7 @@ contract HelperConfig is Script {
 
     function getSepoliaEthConfig() public view returns (NetworkConfig memory) {
         NetworkConfig memory sepoliaNetworkConfig = NetworkConfig({
-            fee: 100000000000000000, // 0.1 ETH
+            fee: 1000000000000000, // 0.001 ETH
             deployerKey: vm.envUint("PRIVATE_KEY")
         });
         return sepoliaNetworkConfig;
@@ -42,7 +42,7 @@ contract HelperConfig is Script {
 
     function getAnvilEthConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory anvilNetworkConfig = NetworkConfig({
-            fee: 100000000000000000, // 0.1 ETH
+            fee: 1000000000000000, // 0.001 ETH
             deployerKey: DEFAULT_ANVIL_PRIVATE_KEY
         });
         return anvilNetworkConfig;
