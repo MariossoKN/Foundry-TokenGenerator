@@ -72,14 +72,9 @@ contract TestTokenGenerator is Test {
     function createToken() public {
         vm.prank(TOKEN_OWNER);
 
-        tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            TOKEN_FUND_GOAL
-        );
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
 
-        tokenAddress = tokenGenerator.getToken(0);
+        tokenAddress = tokenGenerator.getTokenAddress(0);
     }
 
     //////////////////////
@@ -104,39 +99,14 @@ contract TestTokenGenerator is Test {
                 TokenGenerator.TokenGenerator__ValueSentIsLow.selector
             )
         );
-        tokenGenerator.createToken{value: amount}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            TOKEN_FUND_GOAL
-        );
-    }
-
-    function testFuzz_ShouldRevertIfFundGoalIsLow(uint256 _amount) public {
-        uint256 amount = bound(_amount, 1, INCORRECT_FUND_GOAL);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__FundGoalTooLow.selector
-            )
-        );
-        tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            amount
-        );
+        tokenGenerator.createToken{value: amount}(TOKEN_NAME, TOKEN_SYMBOL);
     }
 
     function testShouldCreateAnewTokenContract() public {
         vm.prank(TOKEN_OWNER);
-        tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            TOKEN_FUND_GOAL
-        );
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
 
-        address newToken = tokenGenerator.getToken(0);
+        address newToken = tokenGenerator.getTokenAddress(0);
 
         string memory tokenName = Token(newToken).name();
         string memory tokenSymbol = Token(newToken).symbol();
@@ -151,22 +121,13 @@ contract TestTokenGenerator is Test {
 
     function testShouldUpdateTokenDataCorrectly() public {
         vm.prank(TOKEN_OWNER);
-        tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            TOKEN_FUND_GOAL
-        );
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
 
-        address newToken = tokenGenerator.getToken(0);
+        address newToken = tokenGenerator.getTokenAddress(0);
 
         address creator = tokenGenerator.getTokenCreator(newToken);
-        uint256 fundGoal = tokenGenerator.getTokenFundGoal(newToken);
-        uint256 tokensSold = tokenGenerator.getTokenTokensSold(newToken);
 
         assertEq(creator, TOKEN_OWNER);
-        assertEq(fundGoal, TOKEN_FUND_GOAL);
-        assertEq(tokensSold, 1);
     }
 
     function testShouldEmitEventAfterCreatingToken() public {
@@ -177,12 +138,7 @@ contract TestTokenGenerator is Test {
             TOKEN_SUPPLY,
             TOKEN_OWNER
         );
-        tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL,
-            TOKEN_SUPPLY,
-            TOKEN_FUND_GOAL
-        );
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
     }
 
     ////////////////////
@@ -271,7 +227,7 @@ contract TestTokenGenerator is Test {
         vm.prank(BUYER4);
         vm.expectRevert(
             abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__SaleEnded.selector
+                TokenGenerator.TokenGenerator__AmountExceedsTheFundGoal.selector
             )
         );
         tokenGenerator.buyToken{value: tokenCostFour}(
@@ -318,8 +274,6 @@ contract TestTokenGenerator is Test {
             TOKEN_AMOUNT_FOUR
         );
 
-        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 2);
-
         // buy #2
         uint256 tokenCostTwo = tokenGenerator.calculateTokensCost(
             tokenAddress,
@@ -332,8 +286,6 @@ contract TestTokenGenerator is Test {
             TOKEN_AMOUNT_TWO
         );
 
-        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 3);
-
         // buy #3
         uint256 tokenCostThree = tokenGenerator.calculateTokensCost(
             tokenAddress,
@@ -345,8 +297,6 @@ contract TestTokenGenerator is Test {
             tokenAddress,
             TOKEN_AMOUNT_ONE
         );
-
-        assertEq(tokenGenerator.getTokenTokensSold(tokenAddress), 4);
     }
 
     function testShouldSendEthToTheTokenContract() public {
@@ -536,13 +486,4 @@ contract TestTokenGenerator is Test {
     ////////////////////////////
     // getTokenFundGoal TESTs //
     ////////////////////////////
-    function testShouldGetFundingGoal() public {
-        createToken();
-
-        uint256 expectedFundGoal = tokenGenerator.getTokenFundGoal(
-            tokenAddress
-        );
-
-        assertEq(expectedFundGoal, TOKEN_FUND_GOAL);
-    }
 }
