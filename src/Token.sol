@@ -23,19 +23,21 @@ contract Token is ERC20 {
     constructor(
         string memory _name,
         string memory _symbol,
-        uint256 _tokenSupply,
+        uint256 _initialSupply,
         address _tokenCreator
     ) ERC20(_name, _symbol) {
         i_tokenCreator = _tokenCreator;
         i_tokenGenerator = msg.sender;
 
-        _mint(msg.sender, _tokenSupply);
+        _mint(msg.sender, _initialSupply);
     }
 
     /**
      * @dev
      */
-    function buy() external payable {}
+    function buy(address _callerAddress, uint256 _amount) external payable {
+        _mint(_callerAddress, _amount);
+    }
 
     ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
@@ -43,6 +45,7 @@ contract Token is ERC20 {
     function getTokenCreator() public view returns (address) {
         return i_tokenCreator;
     }
+
     /////////////////////////////
     // EXTERNAL VIEW FUNCTIONS //
     /////////////////////////////
