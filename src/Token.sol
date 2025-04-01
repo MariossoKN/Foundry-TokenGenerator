@@ -12,9 +12,20 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  */
 
 contract Token is ERC20 {
+    // Modifiers
+    modifier onlyTokenGenerator() {
+        if (msg.sender != i_tokenGenerator) {
+            revert Token__OnlyTokenGeneratorContractCanCallThis();
+        }
+        _;
+    }
+
+    // Storage values
     address private immutable i_tokenCreator;
     address private immutable i_tokenGenerator;
 
+    // Errors
+    error Token__OnlyTokenGeneratorContractCanCallThis();
     error Token__ExceededTheMaxFundedAmount();
 
     /**
@@ -35,7 +46,10 @@ contract Token is ERC20 {
     /**
      * @dev
      */
-    function buy(address _callerAddress, uint256 _amount) external payable {
+    function buy(
+        address _callerAddress,
+        uint256 _amount
+    ) external payable onlyTokenGenerator {
         _mint(_callerAddress, _amount);
     }
 
@@ -44,6 +58,10 @@ contract Token is ERC20 {
     ///////////////////////////
     function getTokenCreator() public view returns (address) {
         return i_tokenCreator;
+    }
+
+    function getTokenGeneratorAddress() public view returns (address) {
+        return i_tokenGenerator;
     }
 
     /////////////////////////////
