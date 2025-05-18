@@ -3,7 +3,6 @@
 pragma solidity ^0.8.27;
 
 import {Token} from "./Token.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title TokenGenerator (PumpDotFun inspired)
