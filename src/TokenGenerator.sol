@@ -3,6 +3,7 @@
 pragma solidity ^0.8.27;
 
 import {Token} from "./Token.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title TokenGenerator (PumpDotFun inspired)
@@ -29,29 +30,53 @@ contract TokenGenerator {
     uint256 private immutable i_fee;
     address private immutable i_owner;
 
+    uint256[] private s_tokenStageSupply = [
+        200000,
+        400000,
+        500000,
+        550000,
+        600000,
+        650000,
+        700000,
+        800000
+    ];
+    uint256[] private s_tokenStagePrice = [
+        3000000000000,
+        4500000000000,
+        7500000000000,
+        20000000000000,
+        35000000000000,
+        55000000000000,
+        75000000000000,
+        95000000000000
+    ];
     address[] private s_tokens;
-    uint256 private constant MAX_SUPPLY = 1000000 ether;
-    uint256 private constant INITIAL_SUPPLY = 200000 ether; // 20% of max supply
-    uint256 private constant FUND_GOAL = 24 ether;
-    uint256 private constant INITIAL_PRICE = 0.00003 ether;
-    uint256 public constant K = 8 * 10 ** 15; // Growth rate (k), scaled to avoid precision loss (0.01 * 10^18)
-    uint256 DECIMALS = 10 ** 18;
+    uint256 private constant MAX_SUPPLY = 1000000;
+    uint256 private constant INITIAL_SUPPLY = 200000; // 20% of max supply
+    uint256 private constant FUND_GOAL = 21 ether;
 
     struct TokenData {
-        address tokenCreator;
-        uint256 fundingAmount;
+        address tokenCreatorAddress;
+        uint tokenAmountMinted;
+        uint256 tokenStage;
+    }
+
+    struct BuyerData {
+        uint256 tokenAmountBought;
+        uint256 amountEthSpent;
     }
 
     mapping(address tokenAddress => TokenData tokenData) private s_tokenData;
+    mapping(address tokenAddress => mapping(address buyerAddress => BuyerData buyerData))
+        private s_buyerData;
 
     // Errors
     error TokenGenerator__OnlyOwnerCanWithdraw();
-    error TokenGenerator__ValueSentWrong(uint256);
-    error TokenGenerator__ValueSentIsLow();
-    error TokenGenerator__AmountExceedsTheFundGoal();
+    error TokenGenerator__ValueSentIsLow(uint256);
     error TokenGenerator__TokenAmountTooLow();
     error TokenGenerator__WrongTokenAddress();
-    error TokenGenerator__TokenAmountExceedsTheMaxSupply();
+    error TokenGenerator__TokenAmountExceedsStageSellLimit(uint256);
+    error TokenGenerator__TokenSaleEnded();
 
     /**
      * @dev
@@ -69,14 +94,14 @@ contract TokenGenerator {
         string memory _symbol
     ) external payable returns (address _tokenAddress) {
         if (msg.value < i_fee) {
-            revert TokenGenerator__ValueSentIsLow();
+            revert TokenGenerator__ValueSentIsLow(i_fee);
         }
 
         Token newToken = new Token(_name, _symbol, INITIAL_SUPPLY, msg.sender);
         address tokenAddress = address(newToken);
 
         s_tokens.push(tokenAddress);
-        s_tokenData[tokenAddress] = TokenData(msg.sender, 0);
+        s_tokenData[tokenAddress] = TokenData(msg.sender, 0, 0);
 
         emit TokenCreated(address(newToken), INITIAL_SUPPLY, msg.sender);
         return tokenAddress;
@@ -86,40 +111,49 @@ contract TokenGenerator {
         address _tokenAddress,
         uint256 _tokenAmount
     ) external payable {
-        if (getTokenCreator(_tokenAddress) == address(0)) {
+        if (getTokenCreatorAddress(_tokenAddress) == address(0)) {
             revert TokenGenerator__WrongTokenAddress();
         }
         if (_tokenAmount < 1) {
             revert TokenGenerator__TokenAmountTooLow();
         }
-        // uint256 tokenAmountInWei = _tokenAmount * 10 ** 18;
-        // uint256 tokenCurrentSupply = Token(_tokenAddress).totalSupply();
-        // if (
-        //     (tokenCurrentSupply + tokenAmountInWei) >
-        //     (MAX_SUPPLY - INITIAL_SUPPLY)
-        // ) {
-        //     revert TokenGenerator__TokenAmountExceedsTheMaxSupply();
-        // }
-
-        uint256 currentFundingAmount = getTokenCurrentFundingAmount(
+        uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
         );
-        if (currentFundingAmount + msg.value > FUND_GOAL) {
-            revert TokenGenerator__AmountExceedsTheFundGoal();
+        if (currentSupply == (MAX_SUPPLY - INITIAL_SUPPLY)) {
+            revert TokenGenerator__TokenSaleEnded();
+        }
+        uint256 availableStageSupply = getAvailableStageSupply(_tokenAddress);
+        if (_tokenAmount > availableStageSupply) {
+            revert TokenGenerator__TokenAmountExceedsStageSellLimit(
+                availableStageSupply
+            );
         }
 
-        uint256 tokenSupply = (Token(_tokenAddress).totalSupply()) -
-            INITIAL_SUPPLY;
-
-        uint256 costOfTokens = calculateTokenCost(tokenSupply, _tokenAmount);
-        if (msg.value < costOfTokens) {
-            revert TokenGenerator__ValueSentWrong(costOfTokens);
+        uint256 tokensPrice = calculatePriceForTokens(
+            _tokenAddress,
+            _tokenAmount
+        );
+        if (msg.value < tokensPrice) {
+            revert TokenGenerator__ValueSentIsLow(tokensPrice);
         }
 
-        s_tokenData[_tokenAddress].fundingAmount += msg.value;
+        uint256 currentStageSupply = getTokenCurrentStageSupply(_tokenAddress);
+        if ((_tokenAmount + currentSupply) == currentStageSupply) {
+            s_tokenData[_tokenAddress].tokenStage += 1;
+            s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+            s_buyerData[_tokenAddress][msg.sender]
+                .tokenAmountBought += _tokenAmount;
+            s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
+        } else {
+            s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+            s_buyerData[_tokenAddress][msg.sender]
+                .tokenAmountBought += _tokenAmount;
+            s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
+        }
 
         Token token = Token(_tokenAddress);
-        token.buy{value: msg.value}(msg.sender, _tokenAmount);
+        token.buy{value: msg.value}(_tokenAddress, _tokenAmount);
 
         emit TokenBuy(address(_tokenAddress), _tokenAmount, msg.sender);
     }
@@ -133,52 +167,64 @@ contract TokenGenerator {
     }
 
     ///////////////////////////
-    // PUBLIC PURE FUNCTIONS //
-    ///////////////////////////
-
-    ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
 
-    // Function to calculate the cost in wei for purchasing `tokensToBuy` starting from `currentSupply`
-    function calculateTokenCost(
-        uint256 currentSupply,
-        uint256 tokensToBuy
-    ) public pure returns (uint256) {
-        // Calculate the exponent parts scaled to avoid precision loss
-        uint256 exponent1 = (K * (currentSupply + tokensToBuy)) / 10 ** 18;
-        uint256 exponent2 = (K * currentSupply) / 10 ** 18;
+    function calculatePriceForTokens(
+        address tokenAddress,
+        uint256 tokenAmount
+    ) public view returns (uint256) {
+        uint256 pricePerToken = getTokenCurrentStagePrice(tokenAddress);
 
-        // Calculate e^(kx) using the exp function
-        uint256 exp1 = exp(exponent1);
-        uint256 exp2 = exp(exponent2);
-
-        // Cost formula: (P0 / k) * (e^(k * (currentSupply + tokensToBuy)) - e^(k * currentSupply))
-        // We use (P0 * 10^18) / k to keep the division safe from zero
-        uint256 cost = (INITIAL_PRICE * 10 ** 18 * (exp1 - exp2)) / K; // Adjust for k scaling without dividing by zero
-        return cost;
+        return tokenAmount * pricePerToken;
     }
 
-    // Improved helper function to calculate e^x for larger x using a Taylor series approximation
-    function exp(uint256 x) internal pure returns (uint256) {
-        uint256 sum = 10 ** 18; // Start with 1 * 10^18 for precision
-        uint256 term = 10 ** 18; // Initial term = 1 * 10^18
-        uint256 xPower = x; // Initial power of x
-
-        for (uint256 i = 1; i <= 20; i++) {
-            // Increase iterations for better accuracy
-            term = (term * xPower) / (i * 10 ** 18); // x^i / i!
-            sum += term;
-
-            // Prevent overflow and unnecessary calculations
-            if (term < 1) break;
-        }
-
-        return sum;
+    function getCurrentSupplyWithoutInitialSupply(
+        address tokenAddress
+    ) public view returns (uint256) {
+        return s_tokenData[tokenAddress].tokenAmountMinted;
     }
 
-    function getInitialSupply() public pure returns (uint256) {
-        return INITIAL_SUPPLY;
+    function getStagePrice(uint256 _stage) public view returns (uint256) {
+        return s_tokenStagePrice[_stage];
+    }
+
+    function getStageSupply(uint256 _stage) public view returns (uint256) {
+        return s_tokenStageSupply[_stage];
+    }
+
+    function getTokenCreatorAddress(
+        address _tokenAddress
+    ) public view returns (address) {
+        return s_tokenData[_tokenAddress].tokenCreatorAddress;
+    }
+
+    function getTokenCurrentStageSupply(
+        address tokenAddress
+    ) public view returns (uint256) {
+        uint256 tokenStage = getTokenStage(tokenAddress);
+        return s_tokenStageSupply[tokenStage];
+    }
+
+    function getTokenStage(address tokenAddress) public view returns (uint256) {
+        return s_tokenData[tokenAddress].tokenStage;
+    }
+
+    function getTokenCurrentStagePrice(
+        address tokenAddress
+    ) public view returns (uint256) {
+        uint256 tokenStage = getTokenStage(tokenAddress);
+        return s_tokenStagePrice[tokenStage];
+    }
+
+    function getAvailableStageSupply(
+        address tokenAddress
+    ) public view returns (uint256) {
+        uint256 tokenStage = getTokenStage(tokenAddress);
+        uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
+            tokenAddress
+        );
+        return s_tokenStageSupply[tokenStage] - currentSupply;
     }
 
     function getTokensAmount() public view returns (uint256) {
@@ -197,28 +243,34 @@ contract TokenGenerator {
         return i_owner;
     }
 
-    function getTokenCreator(
-        address _tokenAddress
-    ) public view returns (address) {
-        return s_tokenData[_tokenAddress].tokenCreator;
+    function getBuyerTokenAmountBought(
+        address _tokenAddress,
+        address _buyerAddress
+    ) public view returns (uint256) {
+        return s_buyerData[_tokenAddress][_buyerAddress].tokenAmountBought;
     }
 
-    function getTokenCurrentFundingAmount(
-        address _tokenAddress
+    function getBuyerEthAmountSpent(
+        address _tokenAddress,
+        address _buyerAddress
     ) public view returns (uint256) {
-        return s_tokenData[_tokenAddress].fundingAmount;
+        return s_buyerData[_tokenAddress][_buyerAddress].amountEthSpent;
     }
 
-    function getTokenRemainingFundingAmount(
-        address _tokenAddress
-    ) public view returns (uint256) {
-        uint256 currentFundingAmount = getTokenCurrentFundingAmount(
-            _tokenAddress
-        );
-        if (currentFundingAmount >= FUND_GOAL) {
-            return 0;
-        }
-        return FUND_GOAL - currentFundingAmount;
+    ///////////////////////////
+    // PUBLIC PURE FUNCTIONS //
+    ///////////////////////////
+
+    function getInitialSupply() public pure returns (uint256) {
+        return INITIAL_SUPPLY;
+    }
+
+    function getMaxSupply() public pure returns (uint256) {
+        return MAX_SUPPLY;
+    }
+
+    function getFundGoal() public pure returns (uint256) {
+        return FUND_GOAL;
     }
 
     /////////////////////////////
@@ -228,6 +280,7 @@ contract TokenGenerator {
     //////////////////////
     // FALLBACK RECEIVE //
     //////////////////////
+
     fallback() external payable {}
 
     receive() external payable {}
