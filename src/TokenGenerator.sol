@@ -4,6 +4,9 @@ pragma solidity ^0.8.27;
 
 import {Token} from "./Token.sol";
 
+import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
 /**
  * @title TokenGenerator (PumpDotFun inspired)
  * @author Mariosso
@@ -53,11 +56,14 @@ contract TokenGenerator {
     uint256 private constant MAX_SUPPLY = 1000000;
     uint256 private constant INITIAL_SUPPLY = 200000; // 20% of max supply
     uint256 private constant FUND_GOAL = 21 ether;
+    uint256 private constant ICO_DEADLINE_IN_DAYS = 30;
 
     struct TokenData {
         address tokenCreatorAddress;
-        uint tokenAmountMinted;
+        uint256 tokenAmountMinted;
         uint256 tokenStage;
+        uint256 tokenCreationStart;
+        bool tokenICOActive;
     }
 
     struct BuyerData {
@@ -75,7 +81,8 @@ contract TokenGenerator {
     error TokenGenerator__TokenAmountTooLow();
     error TokenGenerator__WrongTokenAddress();
     error TokenGenerator__TokenAmountExceedsStageSellLimit(uint256);
-    error TokenGenerator__TokenSaleEnded();
+    error TokenGenerator__ICO_DEADLINE_REACHED();
+    error TokenGenerator__TOKEN_ICO_REACHED();
 
     /**
      * @dev
@@ -100,7 +107,13 @@ contract TokenGenerator {
         address tokenAddress = address(newToken);
 
         s_tokens.push(tokenAddress);
-        s_tokenData[tokenAddress] = TokenData(msg.sender, 0, 0);
+        s_tokenData[tokenAddress] = TokenData(
+            msg.sender,
+            0,
+            0,
+            block.timestamp,
+            false
+        );
 
         emit TokenCreated(address(newToken), INITIAL_SUPPLY, msg.sender);
         return tokenAddress;
@@ -110,6 +123,15 @@ contract TokenGenerator {
         address _tokenAddress,
         uint256 _tokenAmount
     ) external payable {
+        if (getTokenICOStatus(_tokenAddress) == true) {
+            revert TokenGenerator__TOKEN_ICO_REACHED();
+        }
+        if (
+            getTokenDeadlineTimeLeft(_tokenAddress) >=
+            ICO_DEADLINE_IN_DAYS * 86400
+        ) {
+            revert TokenGenerator__ICO_DEADLINE_REACHED();
+        }
         if (getTokenCreatorAddress(_tokenAddress) == address(0)) {
             revert TokenGenerator__WrongTokenAddress();
         }
@@ -119,9 +141,6 @@ contract TokenGenerator {
         uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
         );
-        if (currentSupply == (MAX_SUPPLY - INITIAL_SUPPLY)) {
-            revert TokenGenerator__TokenSaleEnded();
-        }
         uint256 availableStageSupply = getAvailableStageSupply(_tokenAddress);
         if (_tokenAmount > availableStageSupply) {
             revert TokenGenerator__TokenAmountExceedsStageSellLimit(
@@ -149,6 +168,13 @@ contract TokenGenerator {
             s_buyerData[_tokenAddress][msg.sender]
                 .tokenAmountBought += _tokenAmount;
             s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
+        }
+
+        if (
+            getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
+            (MAX_SUPPLY - INITIAL_SUPPLY)
+        ) {
+            s_tokenData[_tokenAddress].tokenICOActive = true;
         }
 
         Token token = Token(_tokenAddress);
@@ -190,6 +216,17 @@ contract TokenGenerator {
 
     function getStageSupply(uint256 _stage) public view returns (uint256) {
         return s_tokenStageSupply[_stage];
+    }
+
+    function getTokenDeadlineTimeLeft(
+        address _tokenAddress
+    ) public view returns (uint256) {
+        return (block.timestamp -
+            s_tokenData[_tokenAddress].tokenCreationStart);
+    }
+
+    function getTokenICOStatus(address _address) public view returns (bool) {
+        return s_tokenData[_address].tokenICOActive;
     }
 
     function getTokenCreatorAddress(
