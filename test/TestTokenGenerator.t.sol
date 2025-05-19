@@ -34,6 +34,9 @@ contract TestTokenGenerator is Test {
     uint256 INCREMENT_TWO = STARTING_INCREMENT * 2;
     uint256 INCREMENT_THREE = STARTING_INCREMENT * 3;
 
+    uint256 ONE_DAY_IN_SECONDS = 86400;
+    uint256 DEADLINE_IN_DAYS = 30;
+
     address TOKEN_GENERATOR_OWNER = makeAddr("tokenGeneratorOwner");
     address TOKEN_OWNER = makeAddr("tokenOwner");
     address TOKEN_OWNER2 = makeAddr("tokenOwner2");
@@ -325,29 +328,7 @@ contract TestTokenGenerator is Test {
     ////////////////////
     // buyToken TESTs //
     ////////////////////
-    function testShouldRevertIfTokenAddressIsNotValid() public {
-        createToken();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__WrongTokenAddress.selector
-            )
-        );
-        tokenGenerator.buyToken{value: 1 ether}(BUYER, TOKEN_AMOUNT_ONE);
-    }
-
-    function testShouldRevertIfTokenAmountIsLessThanOne() public {
-        createToken();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__TokenAmountTooLow.selector
-            )
-        );
-        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 0);
-    }
-
-    function testShouldRevertIfTokenMaxSupplyIsReached() public {
+    function testShouldRevertIfICOIsActive() public {
         createToken();
 
         vm.prank(BUYER);
@@ -383,10 +364,62 @@ contract TestTokenGenerator is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__TokenSaleEnded.selector
+                TokenGenerator.TokenGenerator__TOKEN_ICO_REACHED.selector
             )
         );
         tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 1);
+    }
+
+    function testShouldReverIfDeadlineIsReached() public {
+        createToken();
+
+        vm.warp(block.timestamp + (DEADLINE_IN_DAYS * ONE_DAY_IN_SECONDS) + 1);
+        vm.roll(block.number + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ICO_DEADLINE_REACHED.selector
+            )
+        );
+        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, TOKEN_AMOUNT_ONE);
+    }
+
+    function testFuzz_ShouldNotRevertIfDeadlineIsNotReached(
+        uint256 _amount
+    ) public {
+        uint256 amount = bound(_amount, 1, DEADLINE_IN_DAYS * 86400);
+
+        createToken();
+
+        vm.warp(block.timestamp + amount);
+        vm.roll(block.number + 1);
+
+        assertLe(
+            tokenGenerator.getTokenDeadlineTimeLeft(tokenAddress),
+            DEADLINE_IN_DAYS * 86400
+        );
+    }
+
+    function testShouldRevertIfTokenAddressIsNotValid() public {
+        createToken();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__WrongTokenAddress.selector
+            )
+        );
+        tokenGenerator.buyToken{value: 1 ether}(BUYER, TOKEN_AMOUNT_ONE);
+    }
+
+    function testShouldRevertIfTokenAmountIsLessThanOne() public {
+        createToken();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenAmountTooLow.selector
+            )
+        );
+        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 0);
     }
 
     function testShouldRevertIfAmountBoughtExceedsAvailableStageSupply()
@@ -905,6 +938,20 @@ contract TestTokenGenerator is Test {
         );
 
         console.log("Tokens price: ", tokensPrice);
+    }
+
+    /////////////////////////////////////
+    // getTokenDeadlineTimeLeft  TESTs //
+    /////////////////////////////////////
+    function testFuzz_ShouldGetTimeLeftToICODeadline(uint256 _amount) public {
+        uint256 amount = bound(_amount, 1, DEADLINE_IN_DAYS * 86400);
+
+        createToken();
+
+        vm.warp(block.timestamp + amount);
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.getTokenDeadlineTimeLeft(tokenAddress), amount);
     }
 
     ////////////////////////////
