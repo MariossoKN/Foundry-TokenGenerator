@@ -81,8 +81,9 @@ contract TokenGenerator {
     error TokenGenerator__TokenAmountTooLow();
     error TokenGenerator__WrongTokenAddress();
     error TokenGenerator__TokenAmountExceedsStageSellLimit(uint256);
-    error TokenGenerator__ICO_DEADLINE_REACHED();
-    error TokenGenerator__TOKEN_ICO_REACHED();
+    error TokenGenerator__ICODeadlineReached();
+    error TokenGenerator__TokenICOReached();
+    error TokenGenerator__TokenSaleStillActive();
 
     /**
      * @dev
@@ -124,13 +125,13 @@ contract TokenGenerator {
         uint256 _tokenAmount
     ) external payable {
         if (getTokenICOStatus(_tokenAddress) == true) {
-            revert TokenGenerator__TOKEN_ICO_REACHED();
+            revert TokenGenerator__TokenICOReached();
         }
         if (
-            getTokenDeadlineTimeLeft(_tokenAddress) >=
+            getTokenDeadlineTimeLeft(_tokenAddress) >
             ICO_DEADLINE_IN_DAYS * 86400
         ) {
-            revert TokenGenerator__ICO_DEADLINE_REACHED();
+            revert TokenGenerator__ICODeadlineReached();
         }
         if (getTokenCreatorAddress(_tokenAddress) == address(0)) {
             revert TokenGenerator__WrongTokenAddress();
@@ -183,12 +184,30 @@ contract TokenGenerator {
         emit TokenBuy(address(_tokenAddress), _tokenAmount, msg.sender);
     }
 
+    function withdrawFunds(address _tokenAddress) external payable {
+        if (
+            ICO_DEADLINE_IN_DAYS * 86400 >
+            getTokenDeadlineTimeLeft(_tokenAddress)
+        ) {
+            revert TokenGenerator__TokenSaleStillActive();
+        }
+        if (getTokenICOStatus(_tokenAddress) == true) {
+            revert TokenGenerator__TokenICOReached();
+        }
+        uint256 amountToWithdraw = s_buyerData[_tokenAddress][msg.sender]
+            .amountEthSpent;
+
+        s_buyerData[_tokenAddress][msg.sender].amountEthSpent = 0;
+
+        Token(_tokenAddress).withdrawBuyerFunds(msg.sender, amountToWithdraw);
+    }
+
     function withdrawFees() external {
         if (msg.sender != i_owner) {
             revert TokenGenerator__OnlyOwnerCanWithdraw();
         }
         (bool success, ) = (i_owner).call{value: address(this).balance}("");
-        require(success, "Withdraw failed");
+        require(success, "Fees withdraw failed");
     }
 
     ///////////////////////////
