@@ -364,7 +364,7 @@ contract TestTokenGenerator is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__TOKEN_ICO_REACHED.selector
+                TokenGenerator.TokenGenerator__TokenICOReached.selector
             )
         );
         tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 1);
@@ -378,7 +378,7 @@ contract TestTokenGenerator is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__ICO_DEADLINE_REACHED.selector
+                TokenGenerator.TokenGenerator__ICODeadlineReached.selector
             )
         );
         tokenGenerator.buyToken{value: 1 ether}(tokenAddress, TOKEN_AMOUNT_ONE);
@@ -1001,5 +1001,33 @@ contract TestTokenGenerator is Test {
         );
 
         console.log("Available supply: ", availableSupply);
+    }
+
+    function testCheckNewStage() public {
+        createToken();
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 100000);
+
+        uint256 tokensMinted = tokenGenerator
+            .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+        uint256 currentStage = tokenGenerator.getTokenStage(tokenAddress);
+        console.log("Current stage: ", currentStage);
+        console.log("Current supply: ", tokensMinted);
+
+        uint256 tokenAmount = 125000;
+
+        uint256 newStage = tokenGenerator.checkNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        console.log("New Stage: ", newStage);
+
+        uint256 tokensPrice = tokenGenerator.calculatePriceForTokens2(
+            tokenAddress,
+            tokenAmount
+        );
+        console.log(tokensPrice);
     }
 }
