@@ -33,14 +33,14 @@ contract TokenGenerator {
     address private immutable i_owner;
 
     uint256[] private s_tokenStageSupply = [
-        200000,
-        400000,
-        500000,
-        550000,
-        600000,
-        650000,
-        700000,
-        800000
+        200000, // 0    0 - 200000          0.6
+        400000, // 1    200000 - 400000     0.9
+        500000, // 2    400000 - 500000     0.75
+        550000, // 3    500000 - 550000     1
+        600000, // 4    550000 - 600000     1.75
+        650000, // 5    600000 - 650000     2.75
+        700000, // 6    650000 - 700000     3.75
+        800000 // 7     700000 - 800000     9.5
     ];
     uint256[] private s_tokenStagePrice = [
         3000000000000,
@@ -59,7 +59,6 @@ contract TokenGenerator {
     uint256 private constant ICO_DEADLINE_IN_DAYS = 30;
 
     struct TokenData {
-        address tokenCreatorAddress;
         uint256 tokenAmountMinted;
         uint256 tokenStage;
         uint256 tokenCreationStart;
@@ -108,16 +107,99 @@ contract TokenGenerator {
         address tokenAddress = address(newToken);
 
         s_tokens.push(tokenAddress);
-        s_tokenData[tokenAddress] = TokenData(
-            msg.sender,
-            0,
-            0,
-            block.timestamp,
-            false
-        );
+        s_tokenData[tokenAddress] = TokenData(0, 0, block.timestamp, false);
 
         emit TokenCreated(address(newToken), INITIAL_SUPPLY, msg.sender);
         return tokenAddress;
+    }
+
+    function checkNewStage(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) public view returns (uint256 newStage) {
+        uint256 tokenStage = getTokenStage(_tokenAddress);
+        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
+            _tokenAddress
+        );
+        uint256 newTokenSupply = tokenCurrentSupply + _tokenAmount;
+        // 150000 already bought
+        // we are in Stage 0
+        // newTokenSupply = 150000 + 370000 = 520000
+        // final stage should be 2
+        uint256[] memory tokenStageSupply = s_tokenStageSupply;
+        // which is the new stage we get to after the buy?
+        for (uint256 i = tokenStage; i < 8 - tokenStage; i++) {
+            if (newTokenSupply == 800000) {
+                return 7;
+            }
+            if (tokenStageSupply[i] > newTokenSupply) {
+                return newStage = i;
+            }
+        }
+    }
+
+    function buyToken2(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) external payable {}
+
+    function calculatePriceForTokens2(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) public view returns (uint256 tokensPrice) {
+        uint256 newStage = checkNewStage(_tokenAddress, _tokenAmount);
+        // 4
+
+        // 0
+        // uint256 newTokenSupply = tokenCurrentSupply + _tokenAmount;
+        // 560000
+        uint256 startingStage = getTokenStage(_tokenAddress);
+        // 0
+        // uint256[] memory tempTokenStageSupply = s_tokenStageSupply;
+        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
+            _tokenAddress
+        );
+        uint256 tokenAmountLeft = _tokenAmount;
+        for (uint256 i = startingStage; i < newStage + 1; i++) {
+            // i = 0 < 4
+            // i = 1 < 4
+            // i = 2 < 4
+            if (tokenAmountLeft > getStageSupply(i) - tokenCurrentSupply) {
+                // 0 500000 > 200000 - 0 = 200000
+                // 1 300000 > 400000 - 200000 = 200000
+                // 2 100000 > 500000 - 400000 = 100000
+                uint256 currentStageSupplyLeft = getStageSupply(i) -
+                    tokenCurrentSupply;
+                // 0 200000 = 200000 - 0
+                // 1 200000 = 400000 - 200000
+                tokensPrice += s_tokenStagePrice[i] * currentStageSupplyLeft;
+                tokenCurrentSupply += currentStageSupplyLeft;
+                // 0 + 200000 = 200000
+                // 200000 + 200000 = 400000
+                tokenAmountLeft -= currentStageSupplyLeft;
+                // 0 500000 - 200000 = 300000
+                // 1 300000 - 200000 = 100000
+            } else {
+                // i = 2
+                tokensPrice += s_tokenStagePrice[i] * tokenAmountLeft;
+                // = X * 100000
+                return tokensPrice;
+            }
+
+            // uint256 tokensLeftInCurrentStage = (getStageSupply(i)) -
+            //     tokenCurrentSupply;
+            // if (tokenAmountLeft > tokensLeftInCurrentStage) {
+            //     tokenCurrentSupply += tokensLeftInCurrentStage;
+            //     tokensPrice += s_tokenStagePrice[i] * tokensLeftInCurrentStage;
+            // }
+
+            // tokenCurrentSupply += tokensLeftInCurrentStage;
+            // tokensPrice += s_tokenStagePrice[i] * tokensLeftInCurrentStage;
+            // if (tokenCurrentSupply == newTokenSupply) {
+            //     return tokensPrice;
+            // }
+        }
+        return tokensPrice;
     }
 
     function buyToken(
@@ -133,7 +215,7 @@ contract TokenGenerator {
         ) {
             revert TokenGenerator__ICODeadlineReached();
         }
-        if (getTokenCreatorAddress(_tokenAddress) == address(0)) {
+        if (getTokenCreationTimestamp(_tokenAddress) == 0) {
             revert TokenGenerator__WrongTokenAddress();
         }
         if (_tokenAmount < 1) {
@@ -244,6 +326,12 @@ contract TokenGenerator {
             s_tokenData[_tokenAddress].tokenCreationStart);
     }
 
+    function getTokenCreationTimestamp(
+        address _tokenAddress
+    ) public view returns (uint256) {
+        return s_tokenData[_tokenAddress].tokenCreationStart;
+    }
+
     function getTokenICOStatus(address _address) public view returns (bool) {
         return s_tokenData[_address].tokenICOActive;
     }
@@ -251,7 +339,7 @@ contract TokenGenerator {
     function getTokenCreatorAddress(
         address _tokenAddress
     ) public view returns (address) {
-        return s_tokenData[_tokenAddress].tokenCreatorAddress;
+        return Token(_tokenAddress).getTokenCreator();
     }
 
     function getTokenCurrentStageSupply(
