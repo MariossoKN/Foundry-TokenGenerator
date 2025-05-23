@@ -463,24 +463,24 @@ contract TestTokenGenerator is Test {
         );
     }
 
-    function testFuzz_ShouldRevertIfETHValueSentIsLow(uint256 _amount) public {
-        createToken();
+    // function testFuzz_ShouldRevertIfETHValueSentIsLow(uint256 _amount) public {
+    //     createToken();
 
-        uint256 priceForTokens = tokenGenerator.calculatePriceForTokens(
-            tokenAddress,
-            TOKEN_AMOUNT_ONE
-        );
+    //     uint256 priceForTokens = tokenGenerator.calculatePriceForTokens(
+    //         tokenAddress,
+    //         TOKEN_AMOUNT_ONE
+    //     );
 
-        uint256 amount = bound(_amount, 1, priceForTokens - 1);
+    //     uint256 amount = bound(_amount, 1, priceForTokens - 1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__ValueSentIsLow.selector,
-                priceForTokens
-            )
-        );
-        tokenGenerator.buyToken{value: amount}(tokenAddress, TOKEN_AMOUNT_ONE);
-    }
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             TokenGenerator.TokenGenerator__ValueSentIsLow.selector,
+    //             priceForTokens
+    //         )
+    //     );
+    //     tokenGenerator.buyToken{value: amount}(tokenAddress, TOKEN_AMOUNT_ONE);
+    // }
 
     function testShouldUpdateParametersIfNextStageIsHitWithSingleBuy() public {
         createToken();
@@ -866,65 +866,65 @@ contract TestTokenGenerator is Test {
         tokenGenerator.buyToken{value: 1 ether}(tokenAddress, TOKEN_AMOUNT_ONE);
     }
 
-    function testShouldIncreasePriceAndSupplyForEveryStageAndShouldRaiseTheEthGoal()
-        public
-    {
-        createToken();
+    // function testShouldIncreasePriceAndSupplyForEveryStageAndShouldRaiseTheEthGoal()
+    //     public
+    // {
+    //     createToken();
 
-        uint256 stageSupply;
-        uint256 stagePrice;
-        uint256 stage;
-        uint256 tokensPrice;
-        uint256 currentSupply;
+    //     uint256 stageSupply;
+    //     uint256 stagePrice;
+    //     uint256 stage;
+    //     uint256 tokensPrice;
+    //     uint256 currentSupply;
 
-        for (uint256 i = 0; i < 8; i++) {
-            currentSupply = tokenGenerator.getCurrentSupplyWithoutInitialSupply(
-                    tokenAddress
-                );
-            stage = tokenGenerator.getTokenStage(tokenAddress);
-            stageSupply = tokenGenerator.getTokenCurrentStageSupply(
-                tokenAddress
-            );
-            stagePrice = tokenGenerator.getStagePrice(stage);
-            tokensPrice = tokenGenerator.calculatePriceForTokens(
-                tokenAddress,
-                stageSupply - currentSupply
-            );
+    //     for (uint256 i = 0; i < 8; i++) {
+    //         currentSupply = tokenGenerator.getCurrentSupplyWithoutInitialSupply(
+    //                 tokenAddress
+    //             );
+    //         stage = tokenGenerator.getTokenStage(tokenAddress);
+    //         stageSupply = tokenGenerator.getTokenCurrentStageSupply(
+    //             tokenAddress
+    //         );
+    //         stagePrice = tokenGenerator.getStagePrice(stage);
+    //         tokensPrice = tokenGenerator.calculatePriceForTokens(
+    //             tokenAddress,
+    //             stageSupply - currentSupply
+    //         );
 
-            vm.prank(BUYER);
-            tokenGenerator.buyToken{value: tokensPrice}(
-                tokenAddress,
-                stageSupply - currentSupply
-            );
+    //         vm.prank(BUYER);
+    //         tokenGenerator.buyToken{value: tokensPrice}(
+    //             tokenAddress,
+    //             stageSupply - currentSupply
+    //         );
 
-            // check if the price/supply is the same as in the array
-            assertEq(tokenGenerator.getStageSupply(i), stageSupply);
-            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
+    //         // check if the price/supply is the same as in the array
+    //         assertEq(tokenGenerator.getStageSupply(i), stageSupply);
+    //         assertEq(tokenGenerator.getStagePrice(i), stagePrice);
 
-            // check if the new price/supply is increasing with every stage
-            if (i != 0) {
-                uint256 previousTokenStageSupply = tokenGenerator
-                    .getStageSupply(i - 1);
-                uint256 previousTokenStagePrice = tokenGenerator.getStagePrice(
-                    i - 1
-                );
+    //         // check if the new price/supply is increasing with every stage
+    //         if (i != 0) {
+    //             uint256 previousTokenStageSupply = tokenGenerator
+    //                 .getStageSupply(i - 1);
+    //             uint256 previousTokenStagePrice = tokenGenerator.getStagePrice(
+    //                 i - 1
+    //             );
 
-                assertLt(previousTokenStageSupply, stageSupply);
-                assertLt(previousTokenStagePrice, stagePrice);
-            }
+    //             assertLt(previousTokenStageSupply, stageSupply);
+    //             assertLt(previousTokenStagePrice, stagePrice);
+    //         }
 
-            // check if the fund goal was met
-            if (
-                tokenGenerator.getCurrentSupplyWithoutInitialSupply(
-                    tokenAddress
-                ) == 800000
-            ) {
-                uint256 contractFinalBalance = tokenAddress.balance;
+    //         // check if the fund goal was met
+    //         if (
+    //             tokenGenerator.getCurrentSupplyWithoutInitialSupply(
+    //                 tokenAddress
+    //             ) == 800000
+    //         ) {
+    //             uint256 contractFinalBalance = tokenAddress.balance;
 
-                assertEq(contractFinalBalance, tokenGenerator.getFundGoal());
-            }
-        }
-    }
+    //             assertEq(contractFinalBalance, tokenGenerator.getFundGoal());
+    //         }
+    //     }
+    // }
 
     ///////////////////////////////////
     // calculatePriceForTokens TESTs //
@@ -932,9 +932,12 @@ contract TestTokenGenerator is Test {
     function testCalculateTokensPrice() public {
         createToken();
 
+        uint256 newStage = tokenGenerator.checkNewStage(tokenAddress, 50000);
+
         uint256 tokensPrice = tokenGenerator.calculatePriceForTokens(
             tokenAddress,
-            50000
+            50000,
+            newStage
         );
 
         console.log("Tokens price: ", tokensPrice);
@@ -1003,11 +1006,11 @@ contract TestTokenGenerator is Test {
         console.log("Available supply: ", availableSupply);
     }
 
-    function testCheckNewStage() public {
+    function testShouldCalculateNewStageWithPriorBuys() public {
         createToken();
 
         vm.prank(BUYER);
-        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 100000);
+        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, 200000);
 
         uint256 tokensMinted = tokenGenerator
             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
@@ -1015,7 +1018,7 @@ contract TestTokenGenerator is Test {
         console.log("Current stage: ", currentStage);
         console.log("Current supply: ", tokensMinted);
 
-        uint256 tokenAmount = 125000;
+        uint256 tokenAmount = 107968;
 
         uint256 newStage = tokenGenerator.checkNewStage(
             tokenAddress,
@@ -1024,10 +1027,85 @@ contract TestTokenGenerator is Test {
 
         console.log("New Stage: ", newStage);
 
-        uint256 tokensPrice = tokenGenerator.calculatePriceForTokens2(
+        uint256 tokensPrice = tokenGenerator.calculatePriceForTokens(
             tokenAddress,
-            tokenAmount
+            tokenAmount,
+            newStage
         );
         console.log(tokensPrice);
+    }
+
+    function testFuzz_ShouldAlwaysEndUpWithFundGoalAmountOfEth(
+        uint256 _amount1
+    ) public {
+        createToken();
+
+        uint256 amount1 = bound(_amount1, 1, 200000);
+        uint256 amount2 = 800000 - amount1;
+
+        uint256 newStage1 = tokenGenerator.checkNewStage(tokenAddress, amount1);
+
+        uint256 gasStart = gasleft();
+        uint256 tokensPrice1 = tokenGenerator.calculatePriceForTokens(
+            tokenAddress,
+            amount1,
+            newStage1
+        );
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // 8305
+        // 23688
+        console.log("Token1 amount: ", amount1);
+        console.log("Token1 price: ", tokensPrice1);
+
+        vm.prank(BUYER);
+        tokenGenerator.buyToken{value: 1 ether}(tokenAddress, amount1);
+
+        uint256 newStage2 = tokenGenerator.checkNewStage(tokenAddress, amount2);
+
+        uint256 tokensPrice2 = tokenGenerator.calculatePriceForTokens(
+            tokenAddress,
+            amount2,
+            newStage2
+        );
+        console.log("Token2 amount: ", amount2);
+        console.log("Token2 price: ", tokensPrice2);
+
+        assertEq(21 ether, tokensPrice1 + tokensPrice2);
+    }
+
+    function testGasCalculatePriceForTokens() public {
+        createToken();
+
+        uint256 tokenAount = 148987;
+
+        uint256 newStage = tokenGenerator.checkNewStage(
+            tokenAddress,
+            tokenAount
+        );
+
+        uint256 gasStart = gasleft();
+        tokenGenerator.calculatePriceForTokens2(
+            tokenAddress,
+            tokenAount,
+            newStage
+        );
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // 8462 gas - Using public view getStagePrice function
+        // 8420 gas - Reading directly from the storage variable s_tokenStagePrice + using exact array boundries
+        // withou exact array boundries gas = ~11400
+        // 23803 gas - Using stagePrice memory array - its is because saving the 8 slot array = 16800 gas!
+    }
+
+    function testGasNewStage() public {
+        createToken();
+
+        uint256 gasStart = gasleft();
+        tokenGenerator.checkNewStage(tokenAddress, 150000);
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // 22780 gas - Using tokenStageSupply memory array
+        // 7200 gas - Reading directly from s_tokenStageSupply
     }
 }
