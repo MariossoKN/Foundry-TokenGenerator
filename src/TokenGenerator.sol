@@ -83,6 +83,7 @@ contract TokenGenerator {
     error TokenGenerator__ICODeadlineReached();
     error TokenGenerator__TokenICOReached();
     error TokenGenerator__TokenSaleStillActive();
+    error TokenGenerator__WrongStageCalculation();
 
     /**
      * @dev
@@ -118,87 +119,93 @@ contract TokenGenerator {
         uint256 _tokenAmount
     ) public view returns (uint256 newStage) {
         uint256 tokenStage = getTokenStage(_tokenAddress);
-        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
+        uint256 newTokenSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
-        );
-        uint256 newTokenSupply = tokenCurrentSupply + _tokenAmount;
-        // 150000 already bought
-        // we are in Stage 0
-        // newTokenSupply = 150000 + 370000 = 520000
-        // final stage should be 2
-        uint256[] memory tokenStageSupply = s_tokenStageSupply;
-        // which is the new stage we get to after the buy?
-        for (uint256 i = tokenStage; i < 8 - tokenStage; i++) {
-            if (newTokenSupply == 800000) {
-                return 7;
-            }
-            if (tokenStageSupply[i] > newTokenSupply) {
-                return newStage = i;
+        ) + _tokenAmount;
+        if (newTokenSupply == 800000) {
+            return 7;
+        }
+        for (uint256 i = tokenStage; i < 8; i++) {
+            if (s_tokenStageSupply[i] > newTokenSupply) {
+                return i;
             }
         }
     }
 
-    function buyToken2(
+    function calculatePriceForTokens(
         address _tokenAddress,
-        uint256 _tokenAmount
-    ) external payable {}
-
-    function calculatePriceForTokens2(
-        address _tokenAddress,
-        uint256 _tokenAmount
+        uint256 _tokenAmount,
+        uint256 _newStage
     ) public view returns (uint256 tokensPrice) {
-        uint256 newStage = checkNewStage(_tokenAddress, _tokenAmount);
-        // 4
-
-        // 0
-        // uint256 newTokenSupply = tokenCurrentSupply + _tokenAmount;
-        // 560000
         uint256 startingStage = getTokenStage(_tokenAddress);
-        // 0
-        // uint256[] memory tempTokenStageSupply = s_tokenStageSupply;
+
+        if (_newStage < startingStage || _newStage > 7) {
+            revert TokenGenerator__WrongStageCalculation();
+        }
         uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
         );
         uint256 tokenAmountLeft = _tokenAmount;
-        for (uint256 i = startingStage; i < newStage + 1; i++) {
-            // i = 0 < 4
-            // i = 1 < 4
-            // i = 2 < 4
+        for (uint256 i = startingStage; i < _newStage + 1; i++) {
             if (tokenAmountLeft > getStageSupply(i) - tokenCurrentSupply) {
-                // 0 500000 > 200000 - 0 = 200000
-                // 1 300000 > 400000 - 200000 = 200000
-                // 2 100000 > 500000 - 400000 = 100000
                 uint256 currentStageSupplyLeft = getStageSupply(i) -
                     tokenCurrentSupply;
-                // 0 200000 = 200000 - 0
-                // 1 200000 = 400000 - 200000
                 tokensPrice += s_tokenStagePrice[i] * currentStageSupplyLeft;
                 tokenCurrentSupply += currentStageSupplyLeft;
-                // 0 + 200000 = 200000
-                // 200000 + 200000 = 400000
                 tokenAmountLeft -= currentStageSupplyLeft;
-                // 0 500000 - 200000 = 300000
-                // 1 300000 - 200000 = 100000
             } else {
-                // i = 2
                 tokensPrice += s_tokenStagePrice[i] * tokenAmountLeft;
-                // = X * 100000
                 return tokensPrice;
             }
-
-            // uint256 tokensLeftInCurrentStage = (getStageSupply(i)) -
-            //     tokenCurrentSupply;
-            // if (tokenAmountLeft > tokensLeftInCurrentStage) {
-            //     tokenCurrentSupply += tokensLeftInCurrentStage;
-            //     tokensPrice += s_tokenStagePrice[i] * tokensLeftInCurrentStage;
-            // }
-
-            // tokenCurrentSupply += tokensLeftInCurrentStage;
-            // tokensPrice += s_tokenStagePrice[i] * tokensLeftInCurrentStage;
-            // if (tokenCurrentSupply == newTokenSupply) {
-            //     return tokensPrice;
-            // }
         }
+        return tokensPrice;
+    }
+
+    /**
+     * @notice Calculates the total price for purchasing a specified amount of tokens
+     * @param _tokenAddress The address of the token being purchased
+     * @param _tokenAmount The amount of tokens to purchase
+     * @param _newStage The stage the token will reach after this purchase
+     * @return tokensPrice The total price in wei for the token purchase
+     * @dev This function accounts for tier-based pricing across multiple stages
+     */
+    function calculatePriceForTokens2(
+        address _tokenAddress,
+        uint256 _tokenAmount,
+        uint256 _newStage
+    ) public view returns (uint256 tokensPrice) {
+        uint256 startingStage = getTokenStage(_tokenAddress);
+
+        if (_newStage < startingStage) {
+            revert TokenGenerator__WrongStageCalculation();
+        }
+        if (_newStage > 7) {
+            revert TokenGenerator__WrongStageCalculation();
+        }
+
+        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
+            _tokenAddress
+        );
+        uint256 tokenAmountLeft = _tokenAmount;
+
+        for (uint256 i = startingStage; i <= _newStage; ) {
+            uint256 stageSupplyLimit = s_tokenStageSupply[i];
+            uint256 availableInStage = stageSupplyLimit - tokenCurrentSupply;
+
+            if (tokenAmountLeft <= availableInStage) {
+                // All remaining tokens fit in current stage
+                tokensPrice += s_tokenStagePrice[i] * tokenAmountLeft;
+                return tokensPrice;
+            } else {
+                // Consume entire stage and move to next
+                tokensPrice += s_tokenStagePrice[i] * availableInStage;
+                tokenCurrentSupply = stageSupplyLimit;
+                tokenAmountLeft -= availableInStage;
+            }
+
+            ++i;
+        }
+        // This should never be reached with proper input validation
         return tokensPrice;
     }
 
@@ -206,6 +213,9 @@ contract TokenGenerator {
         address _tokenAddress,
         uint256 _tokenAmount
     ) external payable {
+        if (_tokenAddress == address(0)) {
+            revert TokenGenerator__WrongTokenAddress();
+        }
         if (getTokenICOStatus(_tokenAddress) == true) {
             revert TokenGenerator__TokenICOReached();
         }
@@ -218,40 +228,24 @@ contract TokenGenerator {
         if (getTokenCreationTimestamp(_tokenAddress) == 0) {
             revert TokenGenerator__WrongTokenAddress();
         }
-        if (_tokenAmount < 1) {
+        if (_tokenAmount == 0) {
             revert TokenGenerator__TokenAmountTooLow();
         }
-        uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
-            _tokenAddress
-        );
-        uint256 availableStageSupply = getAvailableStageSupply(_tokenAddress);
-        if (_tokenAmount > availableStageSupply) {
-            revert TokenGenerator__TokenAmountExceedsStageSellLimit(
-                availableStageSupply
-            );
-        }
-
+        uint256 newStage = checkNewStage(_tokenAddress, _tokenAmount);
         uint256 tokensPrice = calculatePriceForTokens(
             _tokenAddress,
-            _tokenAmount
+            _tokenAmount,
+            newStage
         );
         if (msg.value < tokensPrice) {
             revert TokenGenerator__ValueSentIsLow(tokensPrice);
         }
 
-        uint256 currentStageSupply = getTokenCurrentStageSupply(_tokenAddress);
-        if ((_tokenAmount + currentSupply) == currentStageSupply) {
-            s_tokenData[_tokenAddress].tokenStage += 1;
-            s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
-            s_buyerData[_tokenAddress][msg.sender]
-                .tokenAmountBought += _tokenAmount;
-            s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
-        } else {
-            s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
-            s_buyerData[_tokenAddress][msg.sender]
-                .tokenAmountBought += _tokenAmount;
-            s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
-        }
+        // s_tokenData[_tokenAddress].tokenStage == newStage;
+        s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+        s_buyerData[_tokenAddress][msg.sender]
+            .tokenAmountBought += _tokenAmount;
+        s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
 
         if (
             getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
@@ -296,14 +290,14 @@ contract TokenGenerator {
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
 
-    function calculatePriceForTokens(
-        address tokenAddress,
-        uint256 tokenAmount
-    ) public view returns (uint256) {
-        uint256 pricePerToken = getTokenCurrentStagePrice(tokenAddress);
+    // function calculatePriceForTokens(
+    //     address tokenAddress,
+    //     uint256 tokenAmount
+    // ) public view returns (uint256) {
+    //     uint256 pricePerToken = getTokenCurrentStagePrice(tokenAddress);
 
-        return tokenAmount * pricePerToken;
-    }
+    //     return tokenAmount * pricePerToken;
+    // }
 
     function getCurrentSupplyWithoutInitialSupply(
         address tokenAddress
