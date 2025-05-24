@@ -12,10 +12,14 @@ contract DeployTokenGenerator is Script {
 
     function run() external returns (TokenGenerator, HelperConfig) {
         helperConfig = new HelperConfig();
-        (uint256 fee, uint256 deployerKey) = helperConfig.activeNetworkConfig();
+        (
+            uint256 fee,
+            uint256 deployerKey,
+            uint256 icoDeadlineInDays
+        ) = helperConfig.activeNetworkConfig();
 
         vm.startBroadcast(deployerKey);
-        tokenGenerator = new TokenGenerator(fee);
+        tokenGenerator = new TokenGenerator(fee, icoDeadlineInDays);
         vm.stopBroadcast();
         return (tokenGenerator, helperConfig);
     }
