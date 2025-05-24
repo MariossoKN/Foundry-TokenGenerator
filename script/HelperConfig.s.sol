@@ -12,6 +12,7 @@ contract HelperConfig is Script {
     struct NetworkConfig {
         uint256 fee;
         uint256 deployerKey;
+        uint256 icoDeadlineInDays;
     }
 
     constructor() {
@@ -27,7 +28,8 @@ contract HelperConfig is Script {
     function getMainNetEthConfig() public view returns (NetworkConfig memory) {
         NetworkConfig memory mainNetNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: vm.envUint("PRIVATE_KEY")
+            deployerKey: vm.envUint("PRIVATE_KEY"),
+            icoDeadlineInDays: 30
         });
         return mainNetNetworkConfig;
     }
@@ -35,7 +37,8 @@ contract HelperConfig is Script {
     function getSepoliaEthConfig() public view returns (NetworkConfig memory) {
         NetworkConfig memory sepoliaNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: vm.envUint("PRIVATE_KEY")
+            deployerKey: vm.envUint("PRIVATE_KEY"),
+            icoDeadlineInDays: 30
         });
         return sepoliaNetworkConfig;
     }
@@ -43,7 +46,8 @@ contract HelperConfig is Script {
     function getAnvilEthConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory anvilNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: DEFAULT_ANVIL_PRIVATE_KEY
+            deployerKey: DEFAULT_ANVIL_PRIVATE_KEY,
+            icoDeadlineInDays: 30
         });
         return anvilNetworkConfig;
     }
