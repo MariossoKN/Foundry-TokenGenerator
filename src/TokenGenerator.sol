@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.27;
+pragma solidity 0.8.27;
 
 import {Token} from "./Token.sol";
 
@@ -15,6 +15,18 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
  */
 
 contract TokenGenerator {
+    // Errors
+    error TokenGenerator__OnlyOwnerCanWithdraw();
+    error TokenGenerator__ValueSentIsLow(uint256);
+    error TokenGenerator__TokenAmountTooLow();
+    error TokenGenerator__WrongTokenAddress();
+    error TokenGenerator__TokenAmountExceedsMaxSupply();
+    error TokenGenerator__ICODeadlineReached();
+    error TokenGenerator__TokenICOReached();
+    error TokenGenerator__TokenSaleStillActive();
+    error TokenGenerator__WrongStageCalculation();
+    error TokenGenerator__CantBeZeroAddress();
+
     // Events
     event TokenCreated(
         address indexed tokenAddress,
@@ -28,9 +40,18 @@ contract TokenGenerator {
         address buyer
     );
 
+    event FundsWithdrawed(
+        address indexed tokenAddress,
+        address indexed callerAddres,
+        uint256 indexed ethAmountWithdrawed
+    );
+
+    event OwnerAddressChanged(address indexed newOwnerAddress);
+
     // Storage variables
     uint256 private immutable i_fee;
-    address private immutable i_owner;
+    uint256 private immutable i_icoDeadlineInDays;
+    address private s_owner;
 
     uint256[] private s_tokenStageSupply = [
         200000, // 0    0 - 200000          0.6
@@ -53,10 +74,9 @@ contract TokenGenerator {
         95000000000000
     ];
     address[] private s_tokens;
-    uint256 private constant MAX_SUPPLY = 1000000;
-    uint256 private constant INITIAL_SUPPLY = 200000; // 20% of max supply
+    uint256 private constant MAX_SUPPLY = 1e6;
+    uint256 private constant INITIAL_SUPPLY = 2e5; // 20% of max supply
     uint256 private constant FUND_GOAL = 21 ether;
-    uint256 private constant ICO_DEADLINE_IN_DAYS = 30;
 
     struct TokenData {
         uint256 tokenAmountMinted;
@@ -74,23 +94,20 @@ contract TokenGenerator {
     mapping(address tokenAddress => mapping(address buyerAddress => BuyerData buyerData))
         private s_buyerData;
 
-    // Errors
-    error TokenGenerator__OnlyOwnerCanWithdraw();
-    error TokenGenerator__ValueSentIsLow(uint256);
-    error TokenGenerator__TokenAmountTooLow();
-    error TokenGenerator__WrongTokenAddress();
-    error TokenGenerator__TokenAmountExceedsStageSellLimit(uint256);
-    error TokenGenerator__ICODeadlineReached();
-    error TokenGenerator__TokenICOReached();
-    error TokenGenerator__TokenSaleStillActive();
-    error TokenGenerator__WrongStageCalculation();
+    modifier onlyContractOwner() {
+        if (msg.sender != s_owner) {
+            revert TokenGenerator__OnlyOwnerCanWithdraw();
+        }
+        _;
+    }
 
     /**
      * @dev
      */
-    constructor(uint256 _fee) {
+    constructor(uint256 _fee, uint256 _icoDeadlineInDays) {
         i_fee = _fee;
-        i_owner = msg.sender;
+        s_owner = msg.sender;
+        i_icoDeadlineInDays = _icoDeadlineInDays;
     }
 
     /**
@@ -114,6 +131,64 @@ contract TokenGenerator {
         return tokenAddress;
     }
 
+    function buyToken(
+        address _tokenAddress,
+        uint256 _tokenAmount
+    ) external payable {
+        if (
+            getCurrentSupplyWithoutInitialSupply(_tokenAddress) + _tokenAmount >
+            MAX_SUPPLY - INITIAL_SUPPLY
+        ) {
+            revert TokenGenerator__TokenAmountExceedsMaxSupply();
+        }
+        if (_tokenAddress == address(0)) {
+            revert TokenGenerator__CantBeZeroAddress();
+        }
+        if (getTokenICOStatus(_tokenAddress)) {
+            revert TokenGenerator__TokenICOReached();
+        }
+        if (
+            getTokenDeadlineTimeLeft(_tokenAddress) >
+            i_icoDeadlineInDays * 86400
+        ) {
+            revert TokenGenerator__ICODeadlineReached();
+        }
+        if (getTokenCreationTimestamp(_tokenAddress) == 0) {
+            revert TokenGenerator__WrongTokenAddress();
+        }
+        if (_tokenAmount == 0) {
+            revert TokenGenerator__TokenAmountTooLow();
+        }
+        // check new stage and calculate price
+        uint256 newStage = checkNewStage(_tokenAddress, _tokenAmount);
+        uint256 tokensPrice = calculatePriceForTokens(
+            _tokenAddress,
+            _tokenAmount,
+            newStage
+        );
+        if (msg.value != tokensPrice) {
+            revert TokenGenerator__ValueSentIsLow(tokensPrice);
+        }
+        // update token/buyer data
+        s_tokenData[_tokenAddress].tokenStage = newStage;
+        s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+        s_buyerData[_tokenAddress][msg.sender]
+            .tokenAmountBought += _tokenAmount;
+        s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
+        // if max supply is sold, change ICO status to true
+        if (
+            getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
+            (MAX_SUPPLY - INITIAL_SUPPLY)
+        ) {
+            s_tokenData[_tokenAddress].tokenICOActive = true;
+        }
+        // send ETH to token contract and mint NFTs to token contract
+        Token token = Token(_tokenAddress);
+        token.buy{value: msg.value}(_tokenAddress, _tokenAmount);
+
+        emit TokenBuy(address(_tokenAddress), _tokenAmount, msg.sender);
+    }
+
     function checkNewStage(
         address _tokenAddress,
         uint256 _tokenAmount
@@ -122,7 +197,7 @@ contract TokenGenerator {
         uint256 newTokenSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
         ) + _tokenAmount;
-        if (newTokenSupply == 800000) {
+        if (newTokenSupply == MAX_SUPPLY - INITIAL_SUPPLY) {
             return 7;
         }
         for (uint256 i = tokenStage; i < 8; i++) {
@@ -130,35 +205,6 @@ contract TokenGenerator {
                 return i;
             }
         }
-    }
-
-    function calculatePriceForTokens(
-        address _tokenAddress,
-        uint256 _tokenAmount,
-        uint256 _newStage
-    ) public view returns (uint256 tokensPrice) {
-        uint256 startingStage = getTokenStage(_tokenAddress);
-
-        if (_newStage < startingStage || _newStage > 7) {
-            revert TokenGenerator__WrongStageCalculation();
-        }
-        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
-            _tokenAddress
-        );
-        uint256 tokenAmountLeft = _tokenAmount;
-        for (uint256 i = startingStage; i < _newStage + 1; i++) {
-            if (tokenAmountLeft > getStageSupply(i) - tokenCurrentSupply) {
-                uint256 currentStageSupplyLeft = getStageSupply(i) -
-                    tokenCurrentSupply;
-                tokensPrice += s_tokenStagePrice[i] * currentStageSupplyLeft;
-                tokenCurrentSupply += currentStageSupplyLeft;
-                tokenAmountLeft -= currentStageSupplyLeft;
-            } else {
-                tokensPrice += s_tokenStagePrice[i] * tokenAmountLeft;
-                return tokensPrice;
-            }
-        }
-        return tokensPrice;
     }
 
     /**
@@ -169,7 +215,7 @@ contract TokenGenerator {
      * @return tokensPrice The total price in wei for the token purchase
      * @dev This function accounts for tier-based pricing across multiple stages
      */
-    function calculatePriceForTokens2(
+    function calculatePriceForTokens(
         address _tokenAddress,
         uint256 _tokenAmount,
         uint256 _newStage
@@ -187,20 +233,34 @@ contract TokenGenerator {
             _tokenAddress
         );
         uint256 tokenAmountLeft = _tokenAmount;
+        // current supply = 120000
+        // current stage = 0
+        // we are buying = 235000
+        // new stage = 1
 
+        // i = 0 ; i <= 1 True
+        // i = 1 ; i <= 1 True
         for (uint256 i = startingStage; i <= _newStage; ) {
             uint256 stageSupplyLimit = s_tokenStageSupply[i];
+            // 200000
+            // 200000
             uint256 availableInStage = stageSupplyLimit - tokenCurrentSupply;
+            // 80000 = 200000 - 120000
+            // 200000 = 400000 - 200000
 
             if (tokenAmountLeft <= availableInStage) {
-                // All remaining tokens fit in current stage
+                // 235000 <= 80000
+                // 155000 <= 200000
                 tokensPrice += s_tokenStagePrice[i] * tokenAmountLeft;
+                // 0.24 + (0,0000045 * 155000) = 0,9375
                 return tokensPrice;
             } else {
-                // Consume entire stage and move to next
                 tokensPrice += s_tokenStagePrice[i] * availableInStage;
+                // 0.24 = 0,000003 * 80000
                 tokenCurrentSupply = stageSupplyLimit;
+                // 200000
                 tokenAmountLeft -= availableInStage;
+                // 235000 - 80000 = 155000
             }
 
             ++i;
@@ -209,65 +269,14 @@ contract TokenGenerator {
         return tokensPrice;
     }
 
-    function buyToken(
-        address _tokenAddress,
-        uint256 _tokenAmount
-    ) external payable {
-        if (_tokenAddress == address(0)) {
-            revert TokenGenerator__WrongTokenAddress();
-        }
-        if (getTokenICOStatus(_tokenAddress) == true) {
-            revert TokenGenerator__TokenICOReached();
-        }
-        if (
-            getTokenDeadlineTimeLeft(_tokenAddress) >
-            ICO_DEADLINE_IN_DAYS * 86400
-        ) {
-            revert TokenGenerator__ICODeadlineReached();
-        }
-        if (getTokenCreationTimestamp(_tokenAddress) == 0) {
-            revert TokenGenerator__WrongTokenAddress();
-        }
-        if (_tokenAmount == 0) {
-            revert TokenGenerator__TokenAmountTooLow();
-        }
-        uint256 newStage = checkNewStage(_tokenAddress, _tokenAmount);
-        uint256 tokensPrice = calculatePriceForTokens(
-            _tokenAddress,
-            _tokenAmount,
-            newStage
-        );
-        if (msg.value < tokensPrice) {
-            revert TokenGenerator__ValueSentIsLow(tokensPrice);
-        }
-
-        // s_tokenData[_tokenAddress].tokenStage == newStage;
-        s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
-        s_buyerData[_tokenAddress][msg.sender]
-            .tokenAmountBought += _tokenAmount;
-        s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
-
-        if (
-            getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
-            (MAX_SUPPLY - INITIAL_SUPPLY)
-        ) {
-            s_tokenData[_tokenAddress].tokenICOActive = true;
-        }
-
-        Token token = Token(_tokenAddress);
-        token.buy{value: msg.value}(_tokenAddress, _tokenAmount);
-
-        emit TokenBuy(address(_tokenAddress), _tokenAmount, msg.sender);
-    }
-
     function withdrawFunds(address _tokenAddress) external payable {
         if (
-            ICO_DEADLINE_IN_DAYS * 86400 >
+            i_icoDeadlineInDays * 86400 >
             getTokenDeadlineTimeLeft(_tokenAddress)
         ) {
             revert TokenGenerator__TokenSaleStillActive();
         }
-        if (getTokenICOStatus(_tokenAddress) == true) {
+        if (getTokenICOStatus(_tokenAddress)) {
             revert TokenGenerator__TokenICOReached();
         }
         uint256 amountToWithdraw = s_buyerData[_tokenAddress][msg.sender]
@@ -276,41 +285,36 @@ contract TokenGenerator {
         s_buyerData[_tokenAddress][msg.sender].amountEthSpent = 0;
 
         Token(_tokenAddress).withdrawBuyerFunds(msg.sender, amountToWithdraw);
+        emit FundsWithdrawed(
+            address(_tokenAddress),
+            msg.sender,
+            amountToWithdraw
+        );
     }
 
-    function withdrawFees() external {
-        if (msg.sender != i_owner) {
-            revert TokenGenerator__OnlyOwnerCanWithdraw();
-        }
-        (bool success, ) = (i_owner).call{value: address(this).balance}("");
+    function withdrawFees() external onlyContractOwner {
+        (bool success, ) = (s_owner).call{value: address(this).balance}("");
         require(success, "Fees withdraw failed");
+    }
+
+    function changeContractOwner(
+        address _newOwnerAddress
+    ) external onlyContractOwner {
+        if (_newOwnerAddress == address(0)) {
+            revert TokenGenerator__CantBeZeroAddress();
+        }
+        s_owner = _newOwnerAddress;
+
+        emit OwnerAddressChanged(_newOwnerAddress);
     }
 
     ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
-
-    // function calculatePriceForTokens(
-    //     address tokenAddress,
-    //     uint256 tokenAmount
-    // ) public view returns (uint256) {
-    //     uint256 pricePerToken = getTokenCurrentStagePrice(tokenAddress);
-
-    //     return tokenAmount * pricePerToken;
-    // }
-
     function getCurrentSupplyWithoutInitialSupply(
         address tokenAddress
     ) public view returns (uint256) {
         return s_tokenData[tokenAddress].tokenAmountMinted;
-    }
-
-    function getStagePrice(uint256 _stage) public view returns (uint256) {
-        return s_tokenStagePrice[_stage];
-    }
-
-    function getStageSupply(uint256 _stage) public view returns (uint256) {
-        return s_tokenStageSupply[_stage];
     }
 
     function getTokenDeadlineTimeLeft(
@@ -330,33 +334,52 @@ contract TokenGenerator {
         return s_tokenData[_address].tokenICOActive;
     }
 
+    function getTokenStage(address tokenAddress) public view returns (uint256) {
+        return s_tokenData[tokenAddress].tokenStage;
+    }
+
+    /////////////////////////////
+    // EXTERNAL VIEW FUNCTIONS //
+    /////////////////////////////
+    function getStagePrice(uint256 _stage) external view returns (uint256) {
+        return s_tokenStagePrice[_stage];
+    }
+
+    function getStageSupply(uint256 _stage) external view returns (uint256) {
+        return s_tokenStageSupply[_stage];
+    }
+
     function getTokenCreatorAddress(
         address _tokenAddress
-    ) public view returns (address) {
+    ) external view returns (address) {
         return Token(_tokenAddress).getTokenCreator();
     }
 
     function getTokenCurrentStageSupply(
         address tokenAddress
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         uint256 tokenStage = getTokenStage(tokenAddress);
         return s_tokenStageSupply[tokenStage];
     }
 
-    function getTokenStage(address tokenAddress) public view returns (uint256) {
-        return s_tokenData[tokenAddress].tokenStage;
-    }
-
     function getTokenCurrentStagePrice(
         address tokenAddress
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         uint256 tokenStage = getTokenStage(tokenAddress);
         return s_tokenStagePrice[tokenStage];
     }
 
+    function getTokensAmount() external view returns (uint256) {
+        return s_tokens.length;
+    }
+
+    function getTokenAddress(uint256 _tokenId) external view returns (address) {
+        return s_tokens[_tokenId];
+    }
+
     function getAvailableStageSupply(
         address tokenAddress
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         uint256 tokenStage = getTokenStage(tokenAddress);
         uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
             tokenAddress
@@ -364,55 +387,47 @@ contract TokenGenerator {
         return s_tokenStageSupply[tokenStage] - currentSupply;
     }
 
-    function getTokensAmount() public view returns (uint256) {
-        return s_tokens.length;
-    }
-
-    function getTokenAddress(uint256 _tokenId) public view returns (address) {
-        return s_tokens[_tokenId];
-    }
-
-    function getFees() public view returns (uint256) {
-        return i_fee;
-    }
-
-    function getOwnerAddress() public view returns (address) {
-        return i_owner;
-    }
-
     function getBuyerTokenAmountBought(
         address _tokenAddress,
         address _buyerAddress
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         return s_buyerData[_tokenAddress][_buyerAddress].tokenAmountBought;
     }
 
     function getBuyerEthAmountSpent(
         address _tokenAddress,
         address _buyerAddress
-    ) public view returns (uint256) {
+    ) external view returns (uint256) {
         return s_buyerData[_tokenAddress][_buyerAddress].amountEthSpent;
     }
 
+    function getFees() external view returns (uint256) {
+        return i_fee;
+    }
+
+    function getOwnerAddress() external view returns (address) {
+        return s_owner;
+    }
+
+    function getIcoDeadline() external view returns (uint256) {
+        return i_icoDeadlineInDays;
+    }
+
     ///////////////////////////
-    // PUBLIC PURE FUNCTIONS //
+    // EXTERNAL PURE FUNCTIONS //
     ///////////////////////////
 
-    function getInitialSupply() public pure returns (uint256) {
+    function getInitialSupply() external pure returns (uint256) {
         return INITIAL_SUPPLY;
     }
 
-    function getMaxSupply() public pure returns (uint256) {
+    function getMaxSupply() external pure returns (uint256) {
         return MAX_SUPPLY;
     }
 
-    function getFundGoal() public pure returns (uint256) {
+    function getFundGoal() external pure returns (uint256) {
         return FUND_GOAL;
     }
-
-    /////////////////////////////
-    // EXTERNAL VIEW FUNCTIONS //
-    /////////////////////////////
 
     //////////////////////
     // FALLBACK RECEIVE //
