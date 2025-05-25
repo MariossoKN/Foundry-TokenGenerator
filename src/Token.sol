@@ -46,11 +46,8 @@ contract Token is ERC20 {
     /**
      * @dev
      */
-    function buy(
-        address _callerAddress,
-        uint256 _amount
-    ) external payable onlyTokenGenerator {
-        _mint(_callerAddress, _amount);
+    function buy(uint256 _amount) external payable onlyTokenGenerator {
+        _mint(i_tokenGenerator, _amount);
     }
 
     function withdrawBuyerFunds(
