@@ -40,7 +40,7 @@ contract Token is ERC20 {
         i_tokenCreator = _tokenCreator;
         i_tokenGenerator = msg.sender;
 
-        _mint(address(this), _initialSupply);
+        _mint(msg.sender, _initialSupply);
     }
 
     /**
