@@ -53,6 +53,8 @@ contract TokenGenerator {
         address indexed newOwner
     );
 
+    event FeesWithdrawed(address owner, uint256 ethAmount);
+
     // Modifiers
     modifier onlyContractOwner() {
         if (msg.sender != s_owner) {
@@ -67,6 +69,7 @@ contract TokenGenerator {
 
     address private s_owner;
     address[] private s_tokens;
+    uint256 private s_accumulatedFees;
     uint256[] private s_tokenStageSupply = [
         200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
         400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
@@ -105,7 +108,7 @@ contract TokenGenerator {
     }
 
     struct BuyerData {
-        uint256 tokenAmountBought;
+        uint256 tokenAmountPurchased;
         uint256 amountEthSpent;
     }
 
@@ -147,6 +150,8 @@ contract TokenGenerator {
             tokenICOActive: false
         });
 
+        s_accumulatedFees += msg.value;
+
         emit TokenCreated(tokenAddress, INITIAL_SUPPLY, msg.sender);
         return tokenAddress;
     }
@@ -163,7 +168,7 @@ contract TokenGenerator {
         uint256 _tokenAmount
     ) external payable {
         _validatePurchase(_tokenAddress, _tokenAmount);
-        // check new stage and calculate price
+
         uint256 newStage = calculateNewStage(_tokenAddress, _tokenAmount);
         uint256 totalCost = calculatePurchaseCost(
             _tokenAddress,
@@ -173,20 +178,20 @@ contract TokenGenerator {
         if (msg.value != totalCost) {
             revert TokenGenerator__InsufficientPayment(totalCost);
         }
-        // update token/buyer data
+
         s_tokenData[_tokenAddress].tokenStage = newStage;
         s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
         s_buyerData[_tokenAddress][msg.sender]
-            .tokenAmountBought += _tokenAmount;
+            .tokenAmountPurchased += _tokenAmount;
         s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
-        // if max supply is sold, set ICO status to true
+
         if (
             getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
             TRADEABLE_SUPPLY
         ) {
             s_tokenData[_tokenAddress].tokenICOActive = true;
         }
-        // send ETH to token contract and mint NFTs to token contract
+
         Token token = Token(_tokenAddress);
         token.buy(_tokenAmount);
 
@@ -217,34 +222,18 @@ contract TokenGenerator {
             _tokenAddress
         );
         uint256 remainingTokens = _tokenAmount;
-        // current supply = 120000
-        // current stage = 0
-        // we are buying = 235000
-        // new stage = 1
 
-        // i = 0 ; i <= 1 True
-        // i = 1 ; i <= 1 True
         for (uint256 i = currentStage; i <= _newStage; ) {
             uint256 stageSupplyLimit = s_tokenStageSupply[i];
-            // 200000
-            // 200000
             uint256 availableInStage = stageSupplyLimit - tokenCurrentSupply;
-            // 80000 = 200000 - 120000
-            // 200000 = 400000 - 200000
 
             if (remainingTokens <= availableInStage) {
-                // 235000 <= 80000
-                // 155000 <= 200000
                 totalCost += s_tokenStagePrice[i] * remainingTokens;
-                // 0.24 + (0,0000045 * 155000) = 0,9375
                 return totalCost;
             } else {
                 totalCost += s_tokenStagePrice[i] * availableInStage;
-                // 0.24 = 0,000003 * 80000
                 tokenCurrentSupply = stageSupplyLimit;
-                // 200000
                 remainingTokens -= availableInStage;
-                // 235000 - 80000 = 155000
             }
 
             ++i;
@@ -300,8 +289,6 @@ contract TokenGenerator {
         }
         s_buyerData[_tokenAddress][msg.sender].amountEthSpent = 0;
 
-        // Token(_tokenAddress).withdrawBuyerFunds(msg.sender, amountToWithdraw);
-
         (bool success, ) = (msg.sender).call{value: amountToWithdraw}("");
         require(success, "Fund withdrawal failed");
 
@@ -313,8 +300,10 @@ contract TokenGenerator {
      * @dev Only callable by contract owner, transfers entire contract balance to owner
      */
     function withdrawAccumulatedFees() external onlyContractOwner {
-        (bool success, ) = (s_owner).call{value: address(this).balance}("");
+        (bool success, ) = (s_owner).call{value: s_accumulatedFees}("");
         require(success, "Fee withdrawal failed");
+
+        emit FeesWithdrawed(s_owner, s_accumulatedFees);
     }
 
     /**
@@ -408,6 +397,10 @@ contract TokenGenerator {
     /////////////////////////////
     // EXTERNAL VIEW FUNCTIONS //
     /////////////////////////////
+    function getAccumulatedFees() external view returns (uint256) {
+        return s_accumulatedFees;
+    }
+
     function getStagePrice(uint256 _stage) external view returns (uint256) {
         return s_tokenStagePrice[_stage];
     }
@@ -468,7 +461,7 @@ contract TokenGenerator {
         address _tokenAddress,
         address _buyerAddress
     ) external view returns (uint256) {
-        return s_buyerData[_tokenAddress][_buyerAddress].tokenAmountBought;
+        return s_buyerData[_tokenAddress][_buyerAddress].tokenAmountPurchased;
     }
 
     function getBuyerEthAmountSpent(
