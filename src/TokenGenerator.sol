@@ -26,6 +26,7 @@ contract TokenGenerator {
     error TokenGenerator__TokenSaleActive();
     error TokenGenerator__InvalidStageCalculation();
     error TokenGenerator__ZeroAddressNotAllowed();
+    error TokenGenerator__NoEthToWithdraw();
 
     // Events
     event TokenCreated(
@@ -146,7 +147,7 @@ contract TokenGenerator {
             tokenICOActive: false
         });
 
-        emit TokenCreated(address(newToken), INITIAL_SUPPLY, msg.sender);
+        emit TokenCreated(tokenAddress, INITIAL_SUPPLY, msg.sender);
         return tokenAddress;
     }
 
@@ -187,7 +188,7 @@ contract TokenGenerator {
         }
         // send ETH to token contract and mint NFTs to token contract
         Token token = Token(_tokenAddress);
-        token.buy{value: msg.value}(_tokenAddress, _tokenAmount);
+        token.buy(_tokenAmount);
 
         emit TokenPurchase(_tokenAddress, _tokenAmount, msg.sender, msg.value);
     }
@@ -294,15 +295,17 @@ contract TokenGenerator {
         }
         uint256 amountToWithdraw = s_buyerData[_tokenAddress][msg.sender]
             .amountEthSpent;
-
+        if (amountToWithdraw == 0) {
+            revert TokenGenerator__NoEthToWithdraw();
+        }
         s_buyerData[_tokenAddress][msg.sender].amountEthSpent = 0;
 
-        Token(_tokenAddress).withdrawBuyerFunds(msg.sender, amountToWithdraw);
-        emit BuyerFundsWithdrawed(
-            address(_tokenAddress),
-            msg.sender,
-            amountToWithdraw
-        );
+        // Token(_tokenAddress).withdrawBuyerFunds(msg.sender, amountToWithdraw);
+
+        (bool success, ) = (msg.sender).call{value: amountToWithdraw}("");
+        require(success, "Fund withdrawal failed");
+
+        emit BuyerFundsWithdrawed(_tokenAddress, msg.sender, amountToWithdraw);
     }
 
     /**
