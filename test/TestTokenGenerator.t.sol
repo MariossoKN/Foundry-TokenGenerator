@@ -2204,28 +2204,120 @@ contract TestTokenGenerator is Test {
     ////////////////////////////
     // getCurrentSupply TESTs //
     ////////////////////////////
-    function testGetCurrentSupply() public {
+    function testShouldGetCurrentSupplyWithoutInitialSupply() public {
         createToken();
 
-        uint256 currentSupply = tokenGenerator
+        uint256 startingSupply = tokenGenerator
             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
 
-        console.log("Current supply: ", currentSupply);
-    }
+        assertEq(startingSupply, 0);
 
-    /////////////////////////
-    // getStagePrice TESTs //
-    /////////////////////////
-    function testGetStagePrice() public {
-        createToken();
+        uint256 tokenAmount = 150000;
 
-        uint256 tokenStage = tokenGenerator.getCurrentPricingStage(
-            tokenAddress
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
         );
 
-        uint256 stagePrice = tokenGenerator.getStagePrice(tokenStage);
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
 
-        console.log("Stage price: ", stagePrice);
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 endingSupply = tokenGenerator
+            .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+        assertEq(endingSupply, tokenAmount);
+    }
+
+    //////////////////////////////////////
+    // getElapsedTimeSinceCreation TEST //
+    //////////////////////////////////////
+    function testShouldGetTimeElapsedSinceTokenCreation() public {
+        createToken();
+
+        assertEq(tokenGenerator.getElapsedTimeSinceCreation(tokenAddress), 0);
+
+        vm.warp(block.timestamp + 5 days);
+        vm.roll(block.number + 1);
+
+        assertEq(
+            tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
+            5 days
+        );
+    }
+
+    ////////////////////////////////////
+    // getTokenCreationTimestamp TEST //
+    ////////////////////////////////////
+    function testShouldReturnTheTimestampWhenTheTokenWasCreated() public {
+        createToken();
+
+        uint256 timeStamp = block.timestamp;
+
+        assertEq(
+            tokenGenerator.getTokenCreationTimestamp(tokenAddress),
+            timeStamp
+        );
+    }
+
+    ////////////////////////////
+    // getTokenICOStatus TEST //
+    ////////////////////////////
+    function testShouldReturnICOStatus() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+
+        purchaseMaxSupplyOfTokens();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
+    }
+
+    //////////////////////////////////
+    // getCurrentPricingStage TESTs //
+    //////////////////////////////////
+    function testShouldGetTheCurrentPricingStage() public {
+        createToken();
+
+        assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), 0);
+
+        uint24[4] memory amounts = [200000, 200000, 100000, 50000];
+
+        for (uint256 i = 0; i < amounts.length; i++) {
+            assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), i);
+
+            uint256 amount = amounts[i];
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                amount
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                amount,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                amount
+            );
+
+            assertEq(
+                tokenGenerator.getCurrentPricingStage(tokenAddress),
+                i + 1
+            );
+        }
     }
 
     /////////////////////////
