@@ -16,7 +16,7 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 
 contract TokenGenerator {
     // Errors
-    error TokenGenerator__OnlyOwnerCanWithdraw();
+    error TokenGenerator__OnlyOwner();
     error TokenGenerator__InsufficientPayment(uint256);
     error TokenGenerator__InvalidTokenAmount();
     error TokenGenerator__InvalidTokenAddress();
@@ -58,7 +58,7 @@ contract TokenGenerator {
     // Modifiers
     modifier onlyContractOwner() {
         if (msg.sender != s_owner) {
-            revert TokenGenerator__OnlyOwnerCanWithdraw();
+            revert TokenGenerator__OnlyOwner();
         }
         _;
     }
@@ -276,12 +276,16 @@ contract TokenGenerator {
      *      resets buyer's spent amount and calls token contract to transfer ETH
      */
     function withdrawFailedLaunchFunds(address _tokenAddress) external payable {
-        if (!isTokenDeadlineExpired(_tokenAddress)) {
-            revert TokenGenerator__TokenSaleActive();
-        }
         if (getTokenICOStatus(_tokenAddress)) {
             revert TokenGenerator__TokenICOActive();
         }
+        if (
+            !isTokenDeadlineExpired(_tokenAddress) &&
+            !getTokenICOStatus(_tokenAddress)
+        ) {
+            revert TokenGenerator__TokenSaleActive();
+        }
+
         uint256 amountToWithdraw = s_buyerData[_tokenAddress][msg.sender]
             .amountEthSpent;
         if (amountToWithdraw == 0) {
@@ -300,10 +304,13 @@ contract TokenGenerator {
      * @dev Only callable by contract owner, transfers entire contract balance to owner
      */
     function withdrawAccumulatedFees() external onlyContractOwner {
-        (bool success, ) = (s_owner).call{value: s_accumulatedFees}("");
+        uint256 accumulatedFees = s_accumulatedFees;
+        s_accumulatedFees = 0;
+
+        (bool success, ) = (s_owner).call{value: accumulatedFees}("");
         require(success, "Fee withdrawal failed");
 
-        emit FeesWithdrawed(s_owner, s_accumulatedFees);
+        emit FeesWithdrawed(s_owner, accumulatedFees);
     }
 
     /**
