@@ -22,6 +22,20 @@ contract TestTokenGenerator is Test {
         address indexed buyer,
         uint256 ethAmount
     );
+
+    event BuyerFundsWithdrawed(
+        address indexed tokenAddress,
+        address indexed callerAddres,
+        uint256 indexed ethAmountWithdrawed
+    );
+
+    event FeesWithdrawed(address owner, uint256 ethAmount);
+
+    event OwnerAddressChanged(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
     TokenGenerator public tokenGenerator;
     HelperConfig public helperConfig;
 
@@ -563,10 +577,14 @@ contract TestTokenGenerator is Test {
         tokenGenerator.purchaseToken{value: 1 ether}(tokenAddress, 0);
     }
 
-    function testShouldReverIfDeadlineExpired() public {
+    function testFuzz_ShouldReverIfDeadlineExpired(uint256 _amount) public {
+        uint256 amount = bound(_amount, 1, type(uint128).max);
+
         createToken();
 
-        vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + 1);
+        vm.warp(
+            block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + amount
+        );
         vm.roll(block.number + 1);
 
         vm.expectRevert(
@@ -1392,6 +1410,778 @@ contract TestTokenGenerator is Test {
         console.log("Gas used:", gasUsed);
         // 22780 gas - Using tokenStageSupply memory array
         // 7200 gas - Reading directly from s_tokenStageSupply
+    }
+
+    /////////////////////////////////////
+    // withdrawFailedLaunchFunds TESTs //
+    /////////////////////////////////////
+    function testShouldRevertIfICOStatusIsFalse() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+
+        purchaseMaxSupplyOfTokens();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenICOActive.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldRevertIfSaleIsActive() public {
+        createToken();
+
+        for (uint256 i = 0; i < 4; i++) {
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                TOKEN_AMOUNT_ONE
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                TOKEN_AMOUNT_ONE,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                TOKEN_AMOUNT_ONE
+            );
+
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenGenerator.TokenGenerator__TokenSaleActive.selector
+                )
+            );
+            vm.prank(BUYER);
+            tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+        }
+    }
+
+    // ICO reached / deadline not reached = revert
+    // ICO reached / deadline reached = revert
+    // ICO not reached / deadline not reached = revert
+    // ICO not reached / deadline reached = not revert
+    function testShouldRevertIfICOReachedAndDeadlineNotReached() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        uint256 tokenAmount = 800000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenICOActive.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldRevertIfICOReachedAndDeadlineReached() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        uint256 tokenAmount = 800000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenICOActive.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldRevertIfICONotReachedAndDeadlineNotReached() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        uint256 tokenAmount = 700000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenSaleActive.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldNotRevertIfICONotReachedAndDeadlineReached() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        uint256 tokenAmount = 700000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldRevertIfAlreadyWithdrawed() public {
+        createToken();
+
+        uint256 tokenAmount = 150000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__NoEthToWithdraw.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldRevertIfWithdrawingFromInvalidAddress() public {
+        createToken();
+
+        uint256 tokenAmount = 150000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__NoEthToWithdraw.selector
+            )
+        );
+        vm.prank(BUYER2);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    function testShouldWihtdrawExactAmountWithSinglePurchaseAndUpdateData()
+        public
+    {
+        createToken();
+
+        uint256 tokenAmount = 150000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER),
+            totalPrice
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        uint256 startingBalance = address(BUYER).balance;
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+
+        uint256 endingBalance = address(BUYER).balance;
+
+        assertEq(endingBalance, startingBalance + totalPrice);
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER), 0);
+    }
+
+    function testShouldWihtdrawExactAmountWithMultiplePurchasesAndUpdateData()
+        public
+    {
+        createToken();
+
+        uint24[3] memory amounts = [150000, 5000, 125000];
+
+        uint256 totalPriceAccumulated;
+
+        for (uint256 i = 0; i < amounts.length; i++) {
+            uint256 amount = amounts[i];
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                amount
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                amount,
+                newStage
+            );
+
+            totalPriceAccumulated += totalPrice;
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                amount
+            );
+
+            assertEq(
+                tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER),
+                totalPriceAccumulated
+            );
+        }
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        uint256 startingBalance = address(BUYER).balance;
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+
+        uint256 endingBalance = address(BUYER).balance;
+
+        assertEq(endingBalance, startingBalance + totalPriceAccumulated);
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER), 0);
+    }
+
+    function testShouldWithdrawExactAmountWithMultipleTokensPurchases() public {
+        vm.prank(TOKEN_OWNER);
+        address tokenAddress1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+        vm.prank(TOKEN_OWNER);
+        address tokenAddress2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME2,
+            TOKEN_SYMBOL2
+        );
+        vm.prank(TOKEN_OWNER);
+        address tokenAddress3 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME2,
+            TOKEN_SYMBOL2
+        );
+
+        uint24[3] memory amounts = [120000, 250000, 13000];
+        address[3] memory tokenAddresses = [
+            tokenAddress1,
+            tokenAddress2,
+            tokenAddress3
+        ];
+
+        uint256 totalPriceAccumulated;
+
+        for (uint256 i = 0; i < amounts.length; i++) {
+            uint256 amount = amounts[i];
+            address newTokenAddress = tokenAddresses[i];
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                newTokenAddress,
+                amount
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                newTokenAddress,
+                amount,
+                newStage
+            );
+
+            totalPriceAccumulated += totalPrice;
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                newTokenAddress,
+                amount
+            );
+
+            assertEq(
+                tokenGenerator.getBuyerEthAmountSpent(newTokenAddress, BUYER),
+                totalPrice
+            );
+        }
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        uint256 balanceBeforeWithdraw = address(BUYER).balance;
+
+        for (uint256 j = 0; j < 3; j++) {
+            uint256 startingBalance = address(BUYER).balance;
+
+            uint256 expectedEthToWithdraw = tokenGenerator
+                .getBuyerEthAmountSpent(tokenAddresses[j], BUYER);
+
+            vm.prank(BUYER);
+            tokenGenerator.withdrawFailedLaunchFunds(tokenAddresses[j]);
+
+            uint256 endingBalance = address(BUYER).balance;
+
+            assertEq(endingBalance, startingBalance + expectedEthToWithdraw);
+            assertEq(
+                tokenGenerator.getBuyerEthAmountSpent(tokenAddresses[j], BUYER),
+                0
+            );
+        }
+
+        assertEq(
+            address(BUYER).balance,
+            balanceBeforeWithdraw + totalPriceAccumulated
+        );
+    }
+
+    function testShouldEmitEventBuyerFundsWithdrawed() public {
+        createToken();
+
+        uint256 tokenAmount = 150000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        vm.warp(block.timestamp + icoDeadlineInDays * ONE_DAY_IN_SECONDS + 1);
+        vm.roll(block.number + 1);
+
+        vm.expectEmit(true, true, true, false);
+        emit BuyerFundsWithdrawed(tokenAddress, BUYER, totalPrice);
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
+    }
+
+    ///////////////////////////////////
+    // withdrawAccumulatedFees TESTs //
+    ///////////////////////////////////
+    function testShouldRevertIfCalledByNotOwnerAndBalanceShouldNotChange()
+        public
+    {
+        address[4] memory notOwnerAddresses = [
+            BUYER,
+            TOKEN_OWNER,
+            BUYER2,
+            TOKEN_OWNER2
+        ];
+
+        vm.prank(TOKEN_OWNER);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+        uint256 startingBalance1 = address(tokenGenerator).balance;
+
+        for (uint256 i = 0; i < notOwnerAddresses.length; i++) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenGenerator.TokenGenerator__OnlyOwner.selector
+                )
+            );
+            vm.prank(notOwnerAddresses[i]);
+            tokenGenerator.withdrawAccumulatedFees();
+        }
+
+        uint256 endingBalance1 = address(tokenGenerator).balance;
+
+        assertEq(startingBalance1, endingBalance1);
+
+        vm.prank(TOKEN_OWNER2);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME2, TOKEN_SYMBOL2);
+
+        vm.prank(TOKEN_OWNER3);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME3, TOKEN_SYMBOL3);
+
+        uint256 startingBalance2 = address(tokenGenerator).balance;
+
+        for (uint256 i = 0; i < notOwnerAddresses.length; i++) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenGenerator.TokenGenerator__OnlyOwner.selector
+                )
+            );
+            vm.prank(notOwnerAddresses[i]);
+            tokenGenerator.withdrawAccumulatedFees();
+        }
+
+        uint256 endingBalance2 = address(tokenGenerator).balance;
+
+        assertEq(startingBalance2, endingBalance2);
+    }
+
+    function testShouldWithdrawExactAmountOfFeesFromContractToOwnerAddress()
+        public
+    {
+        address ownerAddress = tokenGenerator.getOwnerAddress();
+        address tokenGeneratorAddress = address(tokenGenerator);
+
+        uint256 startingOwnerBalance1 = ownerAddress.balance;
+        console.log("Owner startingBalance1:", startingOwnerBalance1);
+
+        // create token #1
+        vm.prank(TOKEN_OWNER);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+        uint256 startingContractBalance1 = tokenGeneratorAddress.balance;
+        console.log("Contract startingBalance1:", startingContractBalance1);
+
+        // withdraw fees #1
+        vm.prank(ownerAddress);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        uint256 endingOwnerBalance1 = ownerAddress.balance;
+        uint256 endingContractBalance1 = tokenGeneratorAddress.balance;
+        console.log("Owner endingOwnerBalance1:", endingOwnerBalance1);
+        console.log("Contract endingContractBalance1:", endingContractBalance1);
+
+        assertEq(endingOwnerBalance1, startingOwnerBalance1 + fee);
+        assertEq(endingContractBalance1, startingContractBalance1 - fee);
+
+        console.log(
+            "----------------------------------------------------------------"
+        );
+
+        uint256 startingOwnerBalance2 = ownerAddress.balance;
+        console.log("Owner startingOwnerBalance2:", startingOwnerBalance2);
+
+        // create tokens #2 and #3
+        vm.prank(TOKEN_OWNER2);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME2, TOKEN_SYMBOL2);
+
+        vm.prank(TOKEN_OWNER3);
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME3, TOKEN_SYMBOL3);
+
+        uint256 startingContractBalance2 = tokenGeneratorAddress.balance;
+        console.log(
+            "Owner startingContractBalance2:",
+            startingContractBalance2
+        );
+
+        // withdraw fees #2
+        vm.prank(ownerAddress);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        uint256 endingOwnerBalance2 = ownerAddress.balance;
+        uint256 endingContractBalance2 = tokenGeneratorAddress.balance;
+        console.log("Owner endingOwnerBalance2:", endingOwnerBalance2);
+        console.log("Contract endingContractBalance2:", endingContractBalance2);
+
+        assertEq(endingOwnerBalance2, startingOwnerBalance2 + (2 * fee));
+        assertEq(endingContractBalance2, startingContractBalance2 - (2 * fee));
+    }
+
+    function testShouldWithdrawExactAmountWithMultiplePurchases() public {
+        createTokenAndPurchaseMultipleBuyers();
+
+        address ownerAddress = tokenGenerator.getOwnerAddress();
+        address tokenGeneratorAddress = address(tokenGenerator);
+
+        uint256 startingOwnerBalance = ownerAddress.balance;
+        console.log("Owner startingOwnerBalance:", startingOwnerBalance);
+
+        uint256 startingContractBalance = tokenGeneratorAddress.balance;
+        console.log(
+            "Contract startingContractBalance:",
+            startingContractBalance
+        );
+
+        // withdraw fees
+        vm.prank(ownerAddress);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        uint256 endingOwnerBalance = ownerAddress.balance;
+        uint256 endingContractBalance = tokenGeneratorAddress.balance;
+        console.log("Owner endingOwnerBalance:", endingOwnerBalance);
+        console.log("Contract endingContractBalance:", endingContractBalance);
+
+        assertEq(endingOwnerBalance, startingOwnerBalance + fee);
+        assertEq(endingContractBalance, startingContractBalance - fee);
+    }
+
+    function testShouldWithdrawExactAmountWithMultiplePurchasesAndMultipleTokens()
+        public
+    {
+        address[3] memory buyers = [BUYER, BUYER2, BUYER3];
+
+        address ownerAddress = tokenGenerator.getOwnerAddress();
+        address tokenGeneratorAddress = address(tokenGenerator);
+
+        uint256 pricePaidByBuyersAccumulated;
+
+        for (uint256 i = 0; i < buyers.length; i++) {
+            address newTokenAddress = tokenGenerator.createToken{value: fee}(
+                TOKEN_NAME,
+                TOKEN_SYMBOL
+            );
+
+            uint256 tokenAmount = 150000;
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                newTokenAddress,
+                tokenAmount
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                newTokenAddress,
+                tokenAmount,
+                newStage
+            );
+
+            pricePaidByBuyersAccumulated += totalPrice;
+
+            vm.prank(buyers[i]);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                newTokenAddress,
+                tokenAmount
+            );
+        }
+
+        uint256 startingOwnerBalance = ownerAddress.balance;
+        console.log("Owner startingOwnerBalance:", startingOwnerBalance);
+
+        uint256 startingContractBalance = tokenGeneratorAddress.balance;
+        console.log(
+            "Contract startingContractBalance:",
+            startingContractBalance
+        );
+
+        // withdraw fees
+        vm.prank(ownerAddress);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        uint256 endingOwnerBalance = ownerAddress.balance;
+        uint256 endingContractBalance = tokenGeneratorAddress.balance;
+        console.log("Owner endingOwnerBalance:", endingOwnerBalance);
+        console.log("Contract endingContractBalance:", endingContractBalance);
+
+        assertEq(
+            endingOwnerBalance,
+            startingOwnerBalance + (buyers.length * fee)
+        );
+        assertEq(
+            endingContractBalance,
+            startingContractBalance - (buyers.length * fee)
+        );
+        assertEq(endingContractBalance, pricePaidByBuyersAccumulated);
+    }
+
+    function testShouldEmitEventFeesWithdrawed() public {
+        createToken();
+
+        address ownerAddress = tokenGenerator.getOwnerAddress();
+
+        assertEq(fee, tokenGenerator.getAccumulatedFees());
+
+        vm.expectEmit(true, true, false, false);
+        emit FeesWithdrawed(ownerAddress, fee);
+        vm.prank(ownerAddress);
+        tokenGenerator.withdrawAccumulatedFees();
+    }
+
+    /////////////////////////////
+    // transferOwnership TESTs //
+    /////////////////////////////
+    function testShouldRevertIfNotCalledByOwner() public {
+        address[4] memory notOwnerAddresses = [
+            BUYER,
+            TOKEN_OWNER,
+            BUYER2,
+            TOKEN_OWNER2
+        ];
+
+        for (uint256 i = 0; i < notOwnerAddresses.length; i++) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenGenerator.TokenGenerator__OnlyOwner.selector
+                )
+            );
+            vm.prank(notOwnerAddresses[i]);
+            tokenGenerator.transferOwnership(BUYER3);
+        }
+    }
+
+    function testShouldRevertIfNewOwnerIsZeroAddress() public {
+        address ownerAddress = tokenGenerator.getOwnerAddress();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ZeroAddressNotAllowed.selector
+            )
+        );
+        vm.prank(ownerAddress);
+        tokenGenerator.transferOwnership(address(0));
+    }
+
+    function testShouldChangeOwnerAddressToNewOwnerAddressAndEmitEvent()
+        public
+    {
+        createToken();
+
+        address previousOwner = tokenGenerator.getOwnerAddress();
+        address newOwner = BUYER4;
+
+        vm.prank(newOwner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__OnlyOwner.selector
+            )
+        );
+        tokenGenerator.withdrawAccumulatedFees();
+
+        assertEq(tokenGenerator.getOwnerAddress(), previousOwner);
+
+        vm.expectEmit(true, true, false, false);
+        emit OwnerAddressChanged(previousOwner, newOwner);
+        vm.prank(previousOwner);
+        tokenGenerator.transferOwnership(newOwner);
+
+        assertEq(tokenGenerator.getOwnerAddress(), newOwner);
+
+        vm.prank(newOwner);
+        tokenGenerator.withdrawAccumulatedFees();
     }
 
     /////////////////////////////////////
