@@ -223,7 +223,7 @@ contract TestTokenGenerator is Test {
         public
         view
     {
-        assertEq(tokenGenerator.getCreationFees(), fee);
+        assertEq(tokenGenerator.getCreationFee(), fee);
         assertEq(tokenGenerator.getIcoDeadlineInDays(), icoDeadlineInDays);
     }
 
@@ -2320,126 +2320,513 @@ contract TestTokenGenerator is Test {
         }
     }
 
-    /////////////////////////
-    // getCurrentPricingStage TESTs //
-    /////////////////////////
-    function testgetCurrentPricingStage() public {
+    //////////////////////////////////
+    // isTokenDeadlineExpired TESTs //
+    //////////////////////////////////
+    function testShouldReturnIfDeadlineWasExpiredOrNot() public {
         createToken();
 
-        uint256 tokenStage = tokenGenerator.getCurrentPricingStage(
-            tokenAddress
-        );
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
 
-        console.log("Token stage: ", tokenStage);
+        vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS));
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
     }
 
-    ///////////////////////////////////
-    // getAvailableStageSupply TESTs //
-    ///////////////////////////////////
-    function testGetAvailableSupply() public {
+    /////////////////////////////
+    // getAccumulatedFees TEST //
+    /////////////////////////////
+    function testShouldReturnAccumulatedFees() public {
+        assertEq(tokenGenerator.getAccumulatedFees(), 0);
+
         createToken();
 
-        uint256 availableSupply = tokenGenerator.getAvailableStageSupply(
-            tokenAddress
-        );
+        assertEq(tokenGenerator.getAccumulatedFees(), fee);
 
-        console.log("Available supply: ", availableSupply);
+        purchaseMaxSupplyOfTokens();
+
+        assertEq(tokenGenerator.getAccumulatedFees(), fee);
+
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+        assertEq(tokenGenerator.getAccumulatedFees(), fee * 2);
+
+        address owner = tokenGenerator.getOwnerAddress();
+        vm.prank(owner);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        assertEq(tokenGenerator.getAccumulatedFees(), 0);
     }
 
-    // function testFuzz_ShouldAlwaysEndUpWithFundGoalAmountOfEth(
-    //     uint256 _amount1,
-    //     uint256 _amount2
-    // ) public {
-    //     createToken();
+    ////////////////////////
+    // getStagePrice TEST //
+    ////////////////////////
+    function testShouldReturnStagePrice() public {
+        createToken();
 
-    //     uint256 amount1 = bound(_amount1, 1, 200000);
-    //     uint256 amount2 = bound(_amount2, 1, 200000);
-    //     uint256 amount3 = 800000 - (amount1 + amount2);
+        uint48[8] memory stagePrices = [
+            3000000000000, //   0.000003  ETH per token
+            4500000000000, //   0.0000045 ETH per token
+            7500000000000, //   0.0000075 ETH per token
+            20000000000000, //  0.00002   ETH per token
+            35000000000000, //  0.000035  ETH per token
+            55000000000000, //  0.000055  ETH per token
+            75000000000000, //  0.000075  ETH per token
+            95000000000000 //   0.000095  ETH per token
+        ];
 
-    //     // buy #1
-    //     uint256 newStage1 = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         amount1
-    //     );
+        for (uint256 i = 0; i < stagePrices.length; i++) {
+            uint256 stagePrice = stagePrices[i];
 
-    //     uint256 tokensPrice1 = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         amount1,
-    //         newStage1
-    //     );
+            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
+        }
+    }
 
-    //     console.log("Token1 amount: ", amount1);
-    //     console.log("Token1 price: ", tokensPrice1);
-    //     console.log("Token1 new stage: ", newStage1);
+    /////////////////////////
+    // getStageSupply TEST //
+    /////////////////////////
+    function testShouldReturnStageSupply() public {
+        createToken();
 
-    //     uint256 gasStart1 = gasleft();
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: tokensPrice1}(
-    //         tokenAddress,
-    //         amount1
-    //     );
-    //     uint256 gasUsed1 = gasStart1 - gasleft();
-    //     console.log("Gas used #1:", gasUsed1);
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
 
-    //     assertEq(
-    //         newStage1,
-    //         tokenGenerator.getCurrentPricingStage(tokenAddress)
-    //     );
+        for (uint256 i = 0; i < stageSupplies.length; i++) {
+            uint256 stageSupply = stageSupplies[i];
 
-    //     // buy #2
-    //     uint256 newStage2 = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         amount2
-    //     );
+            assertEq(tokenGenerator.getStageSupply(i), stageSupply);
+        }
+    }
 
-    //     uint256 tokensPrice2 = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         amount2,
-    //         newStage2
-    //     );
+    //////////////////////////
+    // getTokenCreator TEST //
+    //////////////////////////
+    function testShouldReturnTheTokenCreator() public {
+        vm.prank(TOKEN_OWNER);
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
 
-    //     console.log("Token2 amount: ", amount2);
-    //     console.log("Token2 price: ", tokensPrice2);
-    //     console.log("Token2 new stage: ", newStage2);
+        assertEq(tokenGenerator.getTokenCreator(token1), TOKEN_OWNER);
 
-    //     uint256 gasStart2 = gasleft();
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: tokensPrice2}(
-    //         tokenAddress,
-    //         amount2
-    //     );
-    //     uint256 gasUsed2 = gasStart2 - gasleft();
-    //     console.log("Gas used #2:", gasUsed2);
+        vm.prank(TOKEN_OWNER2);
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
 
-    //     assertEq(
-    //         newStage2,
-    //         tokenGenerator.getCurrentPricingStage(tokenAddress)
-    //     );
+        assertEq(tokenGenerator.getTokenCreator(token2), TOKEN_OWNER2);
 
-    //     // buy #3
-    //     uint256 newStage3 = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         amount3
-    //     );
+        vm.prank(TOKEN_OWNER3);
+        address token3 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
 
-    //     uint256 tokensPrice3 = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         amount3,
-    //         newStage3
-    //     );
-    //     console.log("Token3 amount: ", amount3);
-    //     console.log("Token3 price: ", tokensPrice3);
-    //     console.log("Token3 new stage: ", newStage3);
+        assertEq(tokenGenerator.getTokenCreator(token3), TOKEN_OWNER3);
+    }
 
-    //     uint256 gasStart3 = gasleft();
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: tokensPrice3}(
-    //         tokenAddress,
-    //         amount3
-    //     );
-    //     uint256 gasUsed3 = gasStart3 - gasleft();
-    //     console.log("Gas used #3:", gasUsed3);
+    /////////////////////////////////////
+    // getTokenCurrentStageSupply TEST //
+    /////////////////////////////////////
+    function testShouldReturnCurrentStageSupply() public {
+        createToken();
 
-    //     assertEq(21 ether, tokensPrice1 + tokensPrice2 + tokensPrice3);
-    // }
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
+
+        for (uint256 i = 0; i < stageSupplies.length; i++) {
+            uint256 stageSupply = stageSupplies[i];
+
+            assertEq(
+                tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
+                stageSupply
+            );
+
+            uint256 currentSupply = tokenGenerator
+                .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                stageSupply - currentSupply,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            if (i < 7) {
+                assertEq(
+                    tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
+                    stageSupplies[i + 1]
+                );
+            }
+        }
+    }
+
+    ////////////////////////////////////
+    // getTokenCurrentStagePrice TEST //
+    ////////////////////////////////////
+    function testShouldReturnCurrentStagePrice() public {
+        createToken();
+
+        uint48[8] memory stagePrices = [
+            3000000000000, //   0.000003  ETH per token
+            4500000000000, //   0.0000045 ETH per token
+            7500000000000, //   0.0000075 ETH per token
+            20000000000000, //  0.00002   ETH per token
+            35000000000000, //  0.000035  ETH per token
+            55000000000000, //  0.000055  ETH per token
+            75000000000000, //  0.000075  ETH per token
+            95000000000000 //   0.000095  ETH per token
+        ];
+
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
+
+        for (uint256 i = 0; i < stagePrices.length; i++) {
+            uint256 stagePrice = stagePrices[i];
+            uint256 stageSupply = stageSupplies[i];
+
+            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
+
+            uint256 currentSupply = tokenGenerator
+                .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                stageSupply - currentSupply,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            if (i < 7) {
+                assertEq(tokenGenerator.getStagePrice(i), stagePrices[i]);
+            }
+        }
+    }
+
+    //////////////////////////////////
+    // getAvailableStageSupply TEST //
+    //////////////////////////////////
+    function testFuzz_ShouldReturnRemainingSupplyInCurrentStage(
+        uint256 _amount
+    ) public {
+        uint256 amount = bound(_amount, 1, 199999);
+
+        createToken();
+
+        assertEq(tokenGenerator.getAvailableStageSupply(tokenAddress), 200000);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            amount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            amount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
+
+        assertEq(
+            tokenGenerator.getAvailableStageSupply(tokenAddress),
+            200000 - amount
+        );
+    }
+
+    ///////////////////////////////
+    // getTotalTokensAmount TEST //
+    ///////////////////////////////
+    function testShouldReturnAmountOfTokensCreated() public {
+        for (uint256 i = 1; i < 10; i++) {
+            vm.prank(TOKEN_OWNER);
+            tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+            assertEq(tokenGenerator.getTotalTokensAmount(), i);
+        }
+    }
+
+    //////////////////////////
+    // getTokenAddress TEST //
+    //////////////////////////
+    function testShouldReturnTokenAddress() public {
+        for (uint256 i = 0; i < 10; i++) {
+            vm.prank(TOKEN_OWNER);
+            address newTokenAddress = tokenGenerator.createToken{value: fee}(
+                TOKEN_NAME,
+                TOKEN_SYMBOL
+            );
+
+            assertEq(tokenGenerator.getTokenAddress(i), newTokenAddress);
+        }
+    }
+
+    ////////////////////////////////////////
+    // getBuyerTokenAmountPurchased TESTs //
+    ////////////////////////////////////////
+    function testShouldReturnBuyersTokenAmountPurchased() public {
+        // token #1
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER), 0);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            token1,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER),
+            TOKEN_AMOUNT_ONE
+        );
+
+        // token #2
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER), 0);
+
+        uint256 newStage2 = tokenGenerator.calculateNewStage(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
+            token2,
+            TOKEN_AMOUNT_TWO,
+            newStage2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice2}(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER),
+            TOKEN_AMOUNT_TWO
+        );
+    }
+
+    /////////////////////////////////
+    // getBuyerEthAmountSpent TEST //
+    /////////////////////////////////
+    function testShouldReturnBuyerEthAmountSpent() public {
+        // token #1
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            token1,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(token1, BUYER),
+            totalPrice
+        );
+
+        // token #2
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
+
+        uint256 newStage2 = tokenGenerator.calculateNewStage(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
+            token2,
+            TOKEN_AMOUNT_TWO,
+            newStage2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice2}(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(token2, BUYER),
+            totalPrice2
+        );
+
+        vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + 1);
+        vm.roll(block.number + 1);
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(token1);
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(token2);
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
+    }
+
+    /////////////////////////
+    // getCreationFee TEST //
+    /////////////////////////
+    function testShouldReturnTokenCreationFee() public {
+        createToken();
+
+        assertEq(tokenGenerator.getCreationFee(), fee);
+    }
+
+    //////////////////////////
+    // getOwnerAddress TEST //
+    //////////////////////////
+    function testShouldReturnOwnerAddress() public {
+        createToken();
+
+        address expectedAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+
+        assertEq(tokenGenerator.getOwnerAddress(), expectedAddress);
+    }
+
+    ///////////////////////////////
+    // getIcoDeadlineInDays TEST //
+    ///////////////////////////////
+    function testShouldReturnIcoDeadline() public {
+        createToken();
+
+        uint256 expectedDeadline = 30;
+
+        assertEq(tokenGenerator.getIcoDeadlineInDays(), expectedDeadline);
+    }
+
+    ///////////////////////////
+    // getInitialSupply TEST //
+    ///////////////////////////
+    function testShouldReturnInitialSupply() public {
+        createToken();
+
+        assertEq(tokenGenerator.getInitialSupply(), INITIAL_TOKEN_SUPPLY);
+        assertEq(
+            tokenGenerator.getInitialSupply(),
+            Token(tokenAddress).balanceOf(address(tokenGenerator))
+        );
+    }
+
+    ///////////////////////
+    // getMaxSupply TEST //
+    ///////////////////////
+    function testShouldReturnMaxSupply() public {
+        createToken();
+
+        uint256 expectedMaxSupply = 1000000;
+
+        assertEq(tokenGenerator.getMaxSupply(), expectedMaxSupply);
+    }
+
+    //////////////////////
+    // getFundGoal TEST //
+    //////////////////////
+    function testShouldReturnFundGoal() public {
+        createToken();
+
+        assertEq(tokenGenerator.getFundGoal(), TOKEN_FUND_GOAL);
+    }
+
+    /////////////////////////////
+    // getTradeableSupply TEST //
+    /////////////////////////////
+    function testShouldReturnTradeableSupply() public {
+        createToken();
+
+        uint256 expectedTradeableSupply = 800000;
+
+        assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
+    }
 }
