@@ -8,6 +8,7 @@ import {Token} from "../src/Token.sol";
 import {HelperConfig} from "../script/HelperConfig.s.sol";
 import {Vm} from "../../lib/forge-std/src/Vm.sol";
 import {Test, console} from "../../lib/forge-std/src/Test.sol";
+import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
 contract TestTokenGenerator is Test {
     event TokenCreated(
@@ -42,6 +43,7 @@ contract TestTokenGenerator is Test {
     uint256 public fee;
     uint256 deployerKey;
     uint256 icoDeadlineInDays;
+    address uniswapV2FactoryAddress;
 
     address tokenAddress;
 
@@ -81,8 +83,12 @@ contract TestTokenGenerator is Test {
     function setUp() external {
         DeployTokenGenerator deployTokenGenerator = new DeployTokenGenerator();
         (tokenGenerator, helperConfig) = deployTokenGenerator.run();
-        (fee, deployerKey, icoDeadlineInDays) = helperConfig
-            .activeNetworkConfig();
+        (
+            fee,
+            deployerKey,
+            icoDeadlineInDays,
+            uniswapV2FactoryAddress
+        ) = helperConfig.activeNetworkConfig();
 
         vm.deal(TOKEN_GENERATOR_OWNER, STARTING_BALANCE * 5);
         vm.deal(TOKEN_OWNER, STARTING_BALANCE * 5);
