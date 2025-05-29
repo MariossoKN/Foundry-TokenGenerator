@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.27;
+pragma solidity 0.8.27;
 
 import {Script} from "../lib/forge-std/src/Script.sol";
 import {TokenGenerator} from "../src/TokenGenerator.sol";
@@ -15,11 +15,16 @@ contract DeployTokenGenerator is Script {
         (
             uint256 fee,
             uint256 deployerKey,
-            uint256 icoDeadlineInDays
+            uint256 icoDeadlineInDays,
+            address uniswapV2FactoryAddress
         ) = helperConfig.activeNetworkConfig();
 
         vm.startBroadcast(deployerKey);
-        tokenGenerator = new TokenGenerator(fee, icoDeadlineInDays);
+        tokenGenerator = new TokenGenerator(
+            fee,
+            icoDeadlineInDays,
+            uniswapV2FactoryAddress
+        );
         vm.stopBroadcast();
         return (tokenGenerator, helperConfig);
     }
