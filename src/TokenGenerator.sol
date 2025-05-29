@@ -67,6 +67,8 @@ contract TokenGenerator {
     uint256 private immutable i_fee;
     uint256 private immutable i_icoDeadlineInDays;
 
+    IUniswapV2Factory uniswapV2Factory;
+
     address private s_owner;
     address[] private s_tokens;
     uint256 private s_accumulatedFees;
@@ -118,10 +120,15 @@ contract TokenGenerator {
      * @param _icoDeadlineInDays The deadline for ICO in days after token creation
      * @dev Sets the contract owner to the deployer and stores immutable parameters
      */
-    constructor(uint256 _fee, uint256 _icoDeadlineInDays) {
+    constructor(
+        uint256 _fee,
+        uint256 _icoDeadlineInDays,
+        address _uniswapV2FactoryAddress
+    ) {
         i_fee = _fee;
         i_icoDeadlineInDays = _icoDeadlineInDays;
         s_owner = msg.sender;
+        uniswapV2Factory = IUniswapV2Factory(_uniswapV2FactoryAddress);
     }
 
     /**
@@ -161,7 +168,7 @@ contract TokenGenerator {
      * @param _tokenAddress The address of the token to purchase
      * @param _tokenAmount The amount of tokens to purchase
      * @dev Validates purchase constraints, calculates tiered pricing, updates token stage,
-     *      and forwards ETH to token contract for minting
+     *      forwards ETH and mints tokens to this contract
      */
     function purchaseToken(
         address _tokenAddress,
@@ -202,7 +209,7 @@ contract TokenGenerator {
      * @notice Calculates the total price for purchasing a specified amount of tokens
      * @param _tokenAddress The address of the token being purchased
      * @param _tokenAmount The amount of tokens to purchase
-     * @param _newStage The stage the token will reach after this purchase
+     * @param _newStage The stage (tier) the token will reach after this purchase
      * @return totalCost The total price in wei for the token purchase
      * @dev Accounts for tier-based pricing across multiple stages, calculating cost
      *      for each stage the purchase spans through
@@ -270,10 +277,10 @@ contract TokenGenerator {
     }
 
     /**
-     * @notice Allows buyers to withdraw their ETH if ICO fails or deadline is reached
+     * @notice Allows buyers to withdraw their ETH if ICO fails (deadline is reached)
      * @param _tokenAddress The address of the token to withdraw funds from
-     * @dev Only callable after ICO deadline and if ICO hasn't succeeded,
-     *      resets buyer's spent amount and calls token contract to transfer ETH
+     * @dev Only callable after ICO deadline,
+     *      resets buyer's spent amount and transfers ETH to caller
      */
     function withdrawFailedLaunchFunds(address _tokenAddress) external payable {
         if (getTokenICOStatus(_tokenAddress)) {
@@ -301,7 +308,8 @@ contract TokenGenerator {
 
     /**
      * @notice Allows contract owner to withdraw accumulated fees
-     * @dev Only callable by contract owner, transfers entire contract balance to owner
+     * @dev Only callable by contract owner, transfers accumulatedFees to owner and
+     * resets accumulatedFees to zero
      */
     function withdrawAccumulatedFees() external onlyContractOwner {
         uint256 accumulatedFees = s_accumulatedFees;
@@ -332,6 +340,13 @@ contract TokenGenerator {
      * @notice Validate purchase parameters
      * @param _tokenAddress The token being purchased
      * @param _tokenAmount Amount being purchased
+     * @dev Validates that:
+     *  1) the token amount doesnt exceed tradeable supply,
+     *  2) provided token address is not address zero,
+     *  3) the ICO is not active,
+     *  4) the provided token address exists,
+     *  5) token amount is not zero,
+     *  6) deadline not expired.
      */
     function _validatePurchase(
         address _tokenAddress,
@@ -359,6 +374,12 @@ contract TokenGenerator {
         if (isTokenDeadlineExpired(_tokenAddress)) {
             revert TokenGenerator__ICODeadlineExpired();
         }
+    }
+
+    function _createPair(address _tokenAddress) internal returns (address) {
+        address weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        return uniswapV2Factory.createPair(_tokenAddress, weth);
     }
 
     ///////////////////////////
@@ -436,7 +457,7 @@ contract TokenGenerator {
         return s_tokenStagePrice[tokenStage];
     }
 
-    function getRemainingSupplyInCurrentStage(
+    function getAvailableStageSupply(
         address tokenAddress
     ) external view returns (uint256) {
         uint256 stage = getCurrentPricingStage(tokenAddress);
@@ -454,16 +475,6 @@ contract TokenGenerator {
         return s_tokens[_tokenId];
     }
 
-    function getAvailableStageSupply(
-        address tokenAddress
-    ) external view returns (uint256) {
-        uint256 tokenStage = getCurrentPricingStage(tokenAddress);
-        uint256 currentSupply = getCurrentSupplyWithoutInitialSupply(
-            tokenAddress
-        );
-        return s_tokenStageSupply[tokenStage] - currentSupply;
-    }
-
     function getBuyerTokenAmountPurchased(
         address _tokenAddress,
         address _buyerAddress
@@ -478,7 +489,7 @@ contract TokenGenerator {
         return s_buyerData[_tokenAddress][_buyerAddress].amountEthSpent;
     }
 
-    function getCreationFees() external view returns (uint256) {
+    function getCreationFee() external view returns (uint256) {
         return i_fee;
     }
 
