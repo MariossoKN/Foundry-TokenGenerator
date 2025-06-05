@@ -63,6 +63,13 @@ contract TokenGenerator {
         _;
     }
 
+    modifier cantBeZeroAddress(address _inputAddress) {
+        if (_inputAddress == address(0)) {
+            revert TokenGenerator__ZeroAddressNotAllowed();
+        }
+        _;
+    }
+
     // Storage variables
     uint256 private immutable i_fee;
     uint256 private immutable i_icoDeadlineInDays;
@@ -124,7 +131,7 @@ contract TokenGenerator {
         uint256 _fee,
         uint256 _icoDeadlineInDays,
         address _uniswapV2FactoryAddress
-    ) {
+    ) cantBeZeroAddress(_uniswapV2FactoryAddress) {
         i_fee = _fee;
         i_icoDeadlineInDays = _icoDeadlineInDays;
         s_owner = msg.sender;
@@ -326,10 +333,9 @@ contract TokenGenerator {
      * @param _newOwner The address of the new contract owner
      * @dev Only callable by current owner, validates new address is not zero address
      */
-    function transferOwnership(address _newOwner) external onlyContractOwner {
-        if (_newOwner == address(0)) {
-            revert TokenGenerator__ZeroAddressNotAllowed();
-        }
+    function transferOwnership(
+        address _newOwner
+    ) external onlyContractOwner cantBeZeroAddress(_newOwner) {
         address previousOwner = s_owner;
         s_owner = _newOwner;
 
@@ -351,15 +357,12 @@ contract TokenGenerator {
     function _validatePurchase(
         address _tokenAddress,
         uint256 _tokenAmount
-    ) internal view {
+    ) internal view cantBeZeroAddress(_tokenAddress) {
         if (
             getCurrentSupplyWithoutInitialSupply(_tokenAddress) + _tokenAmount >
             TRADEABLE_SUPPLY
         ) {
             revert TokenGenerator__ExceedsMaxSupply();
-        }
-        if (_tokenAddress == address(0)) {
-            revert TokenGenerator__ZeroAddressNotAllowed();
         }
         if (getTokenICOStatus(_tokenAddress)) {
             revert TokenGenerator__TokenICOActive();
