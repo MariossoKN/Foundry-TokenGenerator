@@ -6,8 +6,10 @@ libs = ["lib"]
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "@uniswap/v2-core/=lib/v2-core/",
-    "@uniswap/v2-periphery/=lib/v2-periphery/"
+    "@uniswap/v2-periphery/=lib/v2-periphery/",
+    "@uniswap/lib/contracts/=lib/solidity-lib/contracts/",
 ]
+
 
 [fuzz]
 runs = 1000
