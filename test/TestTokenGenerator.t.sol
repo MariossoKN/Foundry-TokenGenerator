@@ -7,10 +7,11 @@ import {TokenGenerator} from "../src/TokenGenerator.sol";
 import {Token} from "../src/Token.sol";
 import {HelperConfig} from "../script/HelperConfig.s.sol";
 import {Vm} from "../../lib/forge-std/src/Vm.sol";
-import {Test, console} from "../../lib/forge-std/src/Test.sol";
+import {Test, console, StdCheats} from "../../lib/forge-std/src/Test.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
-contract TestTokenGenerator is Test {
+contract TestTokenGenerator is StdCheats, Test {
     event TokenCreated(
         address indexed tokenAddress,
         uint256 indexed tokenSupply,
@@ -39,6 +40,8 @@ contract TestTokenGenerator is Test {
 
     TokenGenerator public tokenGenerator;
     HelperConfig public helperConfig;
+    IUniswapV2Factory public uniswapV2Factory;
+    IERC20 public erc20;
 
     uint256 public fee;
     uint256 deployerKey;
@@ -89,6 +92,13 @@ contract TestTokenGenerator is Test {
             icoDeadlineInDays,
             uniswapV2FactoryAddress
         ) = helperConfig.activeNetworkConfig();
+
+        uniswapV2Factory = IUniswapV2Factory(
+            deployCode(
+                "./out/UniswapV2Factory.sol/UniswapV2Factory.json",
+                abi.encode(address(this))
+            )
+        );
 
         vm.deal(TOKEN_GENERATOR_OWNER, STARTING_BALANCE * 5);
         vm.deal(TOKEN_OWNER, STARTING_BALANCE * 5);
