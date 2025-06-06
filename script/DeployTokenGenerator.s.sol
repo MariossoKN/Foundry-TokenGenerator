@@ -16,14 +16,16 @@ contract DeployTokenGenerator is Script {
             uint256 fee,
             uint256 deployerKey,
             uint256 icoDeadlineInDays,
-            address uniswapV2FactoryAddress
+            address uniswapV2FactoryAddress,
+            address uniswapV2RouterAddress
         ) = helperConfig.activeNetworkConfig();
 
         vm.startBroadcast(deployerKey);
         tokenGenerator = new TokenGenerator(
             fee,
             icoDeadlineInDays,
-            uniswapV2FactoryAddress
+            uniswapV2FactoryAddress,
+            uniswapV2RouterAddress
         );
         vm.stopBroadcast();
         return (tokenGenerator, helperConfig);
