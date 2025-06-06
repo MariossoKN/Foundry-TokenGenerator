@@ -27,6 +27,7 @@ contract TokenGenerator {
     error TokenGenerator__InvalidStageCalculation();
     error TokenGenerator__ZeroAddressNotAllowed();
     error TokenGenerator__NoEthToWithdraw();
+    error TokenGenerator__ICOCriteriaNotMet();
 
     // Events
     event TokenCreated(
@@ -39,7 +40,8 @@ contract TokenGenerator {
         address indexed tokenAddress,
         uint256 indexed tokenAmountPurchased,
         address indexed buyer,
-        uint256 ethAmount
+        uint256 ethAmount,
+        bool isICOActive
     );
 
     event BuyerFundsWithdrawed(
@@ -75,6 +77,7 @@ contract TokenGenerator {
     uint256 private immutable i_icoDeadlineInDays;
 
     IUniswapV2Factory uniswapV2Factory;
+    IUniswapV2Router02 uniswapV2Router;
 
     address private s_owner;
     address[] private s_tokens;
@@ -114,6 +117,7 @@ contract TokenGenerator {
         uint256 tokenStage;
         uint256 tokenCreationTimestamp;
         bool tokenICOActive;
+        uint256 ethFunded;
     }
 
     struct BuyerData {
@@ -130,12 +134,17 @@ contract TokenGenerator {
     constructor(
         uint256 _fee,
         uint256 _icoDeadlineInDays,
-        address _uniswapV2FactoryAddress
-    ) cantBeZeroAddress(_uniswapV2FactoryAddress) {
+        address _uniswapV2FactoryAddress,
+        address _uniswapV2RouterAddress
+    )
+        cantBeZeroAddress(_uniswapV2FactoryAddress)
+        cantBeZeroAddress(_uniswapV2RouterAddress)
+    {
         i_fee = _fee;
         i_icoDeadlineInDays = _icoDeadlineInDays;
         s_owner = msg.sender;
         uniswapV2Factory = IUniswapV2Factory(_uniswapV2FactoryAddress);
+        uniswapV2Router = IUniswapV2Router02(_uniswapV2RouterAddress);
     }
 
     /**
@@ -161,7 +170,8 @@ contract TokenGenerator {
             tokenAmountMinted: 0,
             tokenStage: 0,
             tokenCreationTimestamp: block.timestamp,
-            tokenICOActive: false
+            tokenICOActive: false,
+            ethFunded: 0
         });
 
         s_accumulatedFees += msg.value;
@@ -195,6 +205,7 @@ contract TokenGenerator {
 
         s_tokenData[_tokenAddress].tokenStage = newStage;
         s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+        s_tokenData[_tokenAddress].ethFunded += msg.value;
         s_buyerData[_tokenAddress][msg.sender]
             .tokenAmountPurchased += _tokenAmount;
         s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
@@ -209,7 +220,13 @@ contract TokenGenerator {
         Token token = Token(_tokenAddress);
         token.buy(_tokenAmount);
 
-        emit TokenPurchase(_tokenAddress, _tokenAmount, msg.sender, msg.value);
+        emit TokenPurchase(
+            _tokenAddress,
+            _tokenAmount,
+            msg.sender,
+            msg.value,
+            s_tokenData[_tokenAddress].tokenICOActive
+        );
     }
 
     /**
@@ -379,10 +396,37 @@ contract TokenGenerator {
         }
     }
 
-    function _createPair(address _tokenAddress) internal returns (address) {
-        address weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    function _validateICO(
+        address _tokenAddress
+    ) public view cantBeZeroAddress(_tokenAddress) {
+        if (getTokenEthAmountFunded(_tokenAddress) != FUNDING_GOAL) {
+            revert TokenGenerator__ICOCriteriaNotMet();
+        }
+    }
 
-        return uniswapV2Factory.createPair(_tokenAddress, weth);
+    // this has to be called separetly (and not inside of purchase function) because it is gas expensive (3+mil)
+    function createPairAndAddLiquidity(
+        address _tokenAddress
+    ) external returns (address pair) {
+        _validateICO(_tokenAddress);
+
+        address weth = IUniswapV2Router02(uniswapV2Router).WETH();
+        pair = uniswapV2Factory.getPair(_tokenAddress, weth);
+
+        if (pair == address(0)) {
+            pair = uniswapV2Factory.createPair(_tokenAddress, weth);
+        }
+
+        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
+        Token(_tokenAddress).approve(address(uniswapV2Router), INITIAL_SUPPLY);
+        uniswapV2Router.addLiquidityETH{value: ethFunded}(
+            _tokenAddress,
+            INITIAL_SUPPLY,
+            INITIAL_SUPPLY,
+            ethFunded,
+            address(this),
+            block.timestamp
+        );
     }
 
     ///////////////////////////
@@ -423,6 +467,12 @@ contract TokenGenerator {
         return
             getElapsedTimeSinceCreation(_tokenAddress) >
             (i_icoDeadlineInDays * 1 days);
+    }
+
+    function getTokenEthAmountFunded(
+        address _tokenAddress
+    ) public view returns (uint256) {
+        return s_tokenData[_tokenAddress].ethFunded;
     }
 
     /////////////////////////////
