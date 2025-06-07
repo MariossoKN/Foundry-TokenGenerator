@@ -2888,7 +2888,7 @@ contract TestTokenGenerator is StdCheats, Test {
     //////////////////////
     // createPair TESTs //
     //////////////////////
-    function testShouldReturnPairAddress() public {
+    function testShouldCreatePoolAndAddLiqudity() public {
         // works either way the addresses are inputed
         assertEq(
             IUniswapV2Factory(uniswapV2FactoryAddress).getPair(
@@ -2899,31 +2899,32 @@ contract TestTokenGenerator is StdCheats, Test {
         );
 
         createTokenAndMaxPurchase();
-        console.log(tokenGenerator.getTokenEthAmountFunded(tokenAddress));
 
-        uint256 gasStart = gasleft();
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
 
         address returnPairAddress = tokenGenerator.createPairAndAddLiquidity(
             tokenAddress
         );
-
-        uint256 gasUsed = gasStart - gasleft();
-        console.log("Gas used:", gasUsed);
 
         address pair = IUniswapV2Factory(uniswapV2FactoryAddress).getPair(
             tokenAddress,
             weth
         );
 
-        assertEq(returnPairAddress, pair);
-
-        assertEq(
-            IUniswapV2Factory(uniswapV2FactoryAddress).getPair(
-                tokenAddress,
-                weth
-            ),
-            returnPairAddress
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
         );
+
+        assertEq(returnPairAddress, pair);
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(Token(tokenAddress).balanceOf(pair), 200000);
+        assertEq(pair.balance, fundedEth);
     }
 
     function testShouldNotRevertIfSomeoneCreatesThePairBeforeUs() public {
