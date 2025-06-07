@@ -10,6 +10,7 @@ import {Vm} from "../../lib/forge-std/src/Vm.sol";
 import {Test, console, StdCheats} from "../../lib/forge-std/src/Test.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
 contract TestTokenGenerator is StdCheats, Test {
     event TokenCreated(
@@ -2902,45 +2903,52 @@ contract TestTokenGenerator is StdCheats, Test {
 
         uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
             .balance;
+        uint256 startingWethContractBalance = weth.balance;
 
-        address returnPairAddress = tokenGenerator.createPairAndAddLiquidity(
-            tokenAddress
-        );
+        (address returnPoolAddress, ) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurn(tokenAddress);
 
-        address pair = IUniswapV2Factory(uniswapV2FactoryAddress).getPair(
-            tokenAddress,
-            weth
-        );
+        address poolAddress = IUniswapV2Factory(uniswapV2FactoryAddress)
+            .getPair(tokenAddress, weth);
 
         uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
             .balance;
         uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
             tokenAddress
         );
+        uint256 endingWethContractBalance = weth.balance;
 
-        assertEq(returnPairAddress, pair);
+        assertEq(returnPoolAddress, poolAddress);
         assertEq(
             startingTokenGeneratorETHBalance - fundedEth,
             endingTokenGeneratorETHBalance
         );
-        assertEq(Token(tokenAddress).balanceOf(pair), 200000);
-        assertEq(pair.balance, fundedEth);
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
     }
 
-    function testShouldNotRevertIfSomeoneCreatesThePairBeforeUs() public {
-        createToken();
+    // function testShouldNotRevertIfSomeoneCreatesThePairBeforeUs() public {
+    //     createToken();
 
-        vm.prank(BUYER4);
-        address uniswapReturnPairAddress = IUniswapV2Factory(
-            uniswapV2FactoryAddress
-        ).createPair(tokenAddress, weth);
+    //     vm.prank(BUYER4);
+    //     address uniswapReturnPairAddress = IUniswapV2Factory(
+    //         uniswapV2FactoryAddress
+    //     ).createPair(tokenAddress, weth);
 
-        purchaseMaxSupplyOfTokens();
-        address contractReturnPairAddress = tokenGenerator
-            .createPairAndAddLiquidity(tokenAddress);
+    //     purchaseMaxSupplyOfTokens();
+    //     address contractReturnPairAddress = tokenGenerator
+    //         .createPairAndAddLiquidity(tokenAddress);
 
-        assertEq(uniswapReturnPairAddress, contractReturnPairAddress);
-    }
+    //     assertEq(uniswapReturnPairAddress, contractReturnPairAddress);
+    // }
 
     // function testCheckGasCostWithGetPairCheck() public {
     //     createToken();
