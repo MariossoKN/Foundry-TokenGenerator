@@ -6,6 +6,9 @@ import {Token} from "./Token.sol";
 
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+
+import "forge-std/console.sol";
 
 /**
  * @title TokenGenerator (PumpDotFun inspired)
@@ -27,7 +30,8 @@ contract TokenGenerator {
     error TokenGenerator__InvalidStageCalculation();
     error TokenGenerator__ZeroAddressNotAllowed();
     error TokenGenerator__NoEthToWithdraw();
-    error TokenGenerator__ICOCriteriaNotMet();
+    error TokenGenerator__FundingGoalNotMet();
+    error TokenGenerator__ICONotActive();
 
     // Events
     event TokenCreated(
@@ -57,6 +61,12 @@ contract TokenGenerator {
 
     event FeesWithdrawed(address owner, uint256 ethAmount);
 
+    event PoolCreatedLiqudityAddedLPTokensBurned(
+        address tokenAddress,
+        address poolAddress,
+        uint256 liqudityBurnt
+    );
+
     // Modifiers
     modifier onlyContractOwner() {
         if (msg.sender != s_owner) {
@@ -76,8 +86,8 @@ contract TokenGenerator {
     uint256 private immutable i_fee;
     uint256 private immutable i_icoDeadlineInDays;
 
-    IUniswapV2Factory uniswapV2Factory;
-    IUniswapV2Router02 uniswapV2Router;
+    IUniswapV2Factory private immutable i_uniswapV2Factory;
+    IUniswapV2Router02 private immutable i_uniswapV2Router;
 
     address private s_owner;
     address[] private s_tokens;
@@ -143,8 +153,8 @@ contract TokenGenerator {
         i_fee = _fee;
         i_icoDeadlineInDays = _icoDeadlineInDays;
         s_owner = msg.sender;
-        uniswapV2Factory = IUniswapV2Factory(_uniswapV2FactoryAddress);
-        uniswapV2Router = IUniswapV2Router02(_uniswapV2RouterAddress);
+        i_uniswapV2Factory = IUniswapV2Factory(_uniswapV2FactoryAddress);
+        i_uniswapV2Router = IUniswapV2Router02(_uniswapV2RouterAddress);
     }
 
     /**
@@ -359,6 +369,49 @@ contract TokenGenerator {
         emit OwnerAddressChanged(previousOwner, _newOwner);
     }
 
+    // this has to be called separetly (and not inside of purchase function) because it is super gas expensive (3+mil)
+    function createPoolAndAddLiquidityAndBurnLPTokens(
+        address _tokenAddress
+    ) external returns (address poolAddress, uint256 liquidity) {
+        _validateICO(_tokenAddress);
+
+        // check/create pool
+        address weth = IUniswapV2Router02(i_uniswapV2Router).WETH();
+        poolAddress = i_uniswapV2Factory.getPair(_tokenAddress, weth);
+
+        if (poolAddress == address(0)) {
+            poolAddress = i_uniswapV2Factory.createPair(_tokenAddress, weth);
+        }
+
+        Token(_tokenAddress).approve(
+            address(i_uniswapV2Router),
+            INITIAL_SUPPLY
+        );
+
+        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
+        s_tokenData[_tokenAddress].ethFunded = 0;
+
+        // create liquidity for the pair
+        (, , liquidity) = i_uniswapV2Router.addLiquidityETH{value: ethFunded}(
+            _tokenAddress,
+            INITIAL_SUPPLY,
+            INITIAL_SUPPLY,
+            ethFunded,
+            address(this),
+            block.timestamp
+        );
+
+        // burn liqudity tokens
+        IUniswapV2Pair pool = IUniswapV2Pair(poolAddress);
+        pool.transfer(address(0), liquidity);
+
+        emit PoolCreatedLiqudityAddedLPTokensBurned(
+            _tokenAddress,
+            poolAddress,
+            liquidity
+        );
+    }
+
     /**
      * @notice Validate purchase parameters
      * @param _tokenAddress The token being purchased
@@ -398,35 +451,13 @@ contract TokenGenerator {
 
     function _validateICO(
         address _tokenAddress
-    ) public view cantBeZeroAddress(_tokenAddress) {
+    ) internal view cantBeZeroAddress(_tokenAddress) {
+        if (s_tokenData[_tokenAddress].tokenICOActive != true) {
+            revert TokenGenerator__ICONotActive();
+        }
         if (getTokenEthAmountFunded(_tokenAddress) != FUNDING_GOAL) {
-            revert TokenGenerator__ICOCriteriaNotMet();
+            revert TokenGenerator__FundingGoalNotMet();
         }
-    }
-
-    // this has to be called separetly (and not inside of purchase function) because it is gas expensive (3+mil)
-    function createPairAndAddLiquidity(
-        address _tokenAddress
-    ) external returns (address pair) {
-        _validateICO(_tokenAddress);
-
-        address weth = IUniswapV2Router02(uniswapV2Router).WETH();
-        pair = uniswapV2Factory.getPair(_tokenAddress, weth);
-
-        if (pair == address(0)) {
-            pair = uniswapV2Factory.createPair(_tokenAddress, weth);
-        }
-
-        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
-        Token(_tokenAddress).approve(address(uniswapV2Router), INITIAL_SUPPLY);
-        uniswapV2Router.addLiquidityETH{value: ethFunded}(
-            _tokenAddress,
-            INITIAL_SUPPLY,
-            INITIAL_SUPPLY,
-            ethFunded,
-            address(this),
-            block.timestamp
-        );
     }
 
     ///////////////////////////
