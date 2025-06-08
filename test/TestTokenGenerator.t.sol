@@ -40,6 +40,12 @@ contract TestTokenGenerator is StdCheats, Test {
         address indexed newOwner
     );
 
+    event PoolCreatedLiqudityAddedLPTokensBurned(
+        address tokenAddress,
+        address poolAddress,
+        uint256 liqudityBurnt
+    );
+
     TokenGenerator public tokenGenerator;
     HelperConfig public helperConfig;
 
@@ -81,6 +87,7 @@ contract TestTokenGenerator is StdCheats, Test {
     string TOKEN_NAME4 = "Dark Token";
     string TOKEN_SYMBOL4 = "DTK";
     uint256 INITIAL_TOKEN_SUPPLY = 200000;
+    uint256 MAX_SUPPLY_WITHOUT_INIT_SUPPLY = 800000;
     uint256 TOKEN_FUND_GOAL = 21 ether;
     uint256 INCORRECT_FUND_GOAL = 99 ether;
 
@@ -2886,30 +2893,139 @@ contract TestTokenGenerator is StdCheats, Test {
     //     assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
     // }
 
-    //////////////////////
-    // createPair TESTs //
-    //////////////////////
-    function testShouldCreatePoolAndAddLiqudity() public {
-        // works either way the addresses are inputed
-        assertEq(
-            IUniswapV2Factory(uniswapV2FactoryAddress).getPair(
-                tokenAddress,
-                weth
-            ),
-            address(0)
+    ////////////////////////////////////////////////////
+    // createPoolAndAddLiquidityAndBurnLPTokens TESTs //
+    ////////////////////////////////////////////////////
+    function testShouldRevertIfICOIsNotActiveNoPurchase() public {
+        createToken();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ICONotActive.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfICOIsNotActiveSinglePurchase() public {
+        createTokenAndPurchaseOneBuyer();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ICONotActive.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfICOIsNotActiveMultiplePurchases() public {
+        createTokenAndPurchaseMultipleBuyers();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ICONotActive.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    // cant be directly tested because ICO will not be active if the fund goal is not met
+    // function testShouldRevertIfFundingGoalIsNotMet() public {
+    // }
+
+    function testShouldRevertIfFundingGoalIsZero() public {
+        createTokenAndMaxPurchase();
+
+        // after succesfull call resets the fundingGoal to 0
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingGoalNotMet.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldNotRevertIfTheLiqudityPoolIsAlreadyCreated() public {
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+
+        createToken();
+
+        // create liqudity pool before calling the "createPoolAndAddLiquidityAndBurnLPTokens" function
+        address poolAddress = factory.createPair(tokenAddress, weth);
+
+        purchaseMaxSupplyOfTokens();
+
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 startingWethContractBalance = weth.balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
         );
 
+        assertEq(poolAddress, factory.getPair(tokenAddress, weth));
+
+        (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+
+        uint256 endingWethContractBalance = weth.balance;
+
+        assertEq(poolAddress, returnedPoolAddress);
+        assertGt(liqudity, 0);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
+    }
+
+    function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
         createTokenAndMaxPurchase();
+
+        assertEq(
+            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+            TOKEN_FUND_GOAL
+        );
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
+    }
+
+    function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+
+        createToken();
+
+        // works either way the addresses are inputed
+        assertEq(factory.getPair(tokenAddress, weth), address(0));
+
+        purchaseMaxSupplyOfTokens();
 
         uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
             .balance;
         uint256 startingWethContractBalance = weth.balance;
 
         (address returnPoolAddress, ) = tokenGenerator
-            .createPoolAndAddLiquidityAndBurn(tokenAddress);
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
-        address poolAddress = IUniswapV2Factory(uniswapV2FactoryAddress)
-            .getPair(tokenAddress, weth);
+        address poolAddress = factory.getPair(tokenAddress, weth);
 
         uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
             .balance;
@@ -2919,6 +3035,10 @@ contract TestTokenGenerator is StdCheats, Test {
         uint256 endingWethContractBalance = weth.balance;
 
         assertEq(returnPoolAddress, poolAddress);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
         assertEq(
             startingTokenGeneratorETHBalance - fundedEth,
             endingTokenGeneratorETHBalance
@@ -2933,6 +3053,35 @@ contract TestTokenGenerator is StdCheats, Test {
             startingWethContractBalance + fundedEth,
             endingWethContractBalance
         );
+    }
+
+    function testShouldEmitAnEvent() public {
+        createTokenAndMaxPurchase();
+
+        address pair;
+
+        (address token0, address token1) = tokenAddress < weth
+            ? (tokenAddress, weth)
+            : (weth, tokenAddress);
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                hex"ff",
+                uniswapV2FactoryAddress,
+                salt,
+                hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // UniswapV2Pair bytecode hash
+            )
+        );
+        pair = address(uint160(uint256(hash)));
+        console.log(pair);
+
+        vm.expectEmit(true, true, true, false);
+        emit PoolCreatedLiqudityAddedLPTokensBurned(
+            tokenAddress,
+            pair,
+            2049390152191
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
     // function testShouldNotRevertIfSomeoneCreatesThePairBeforeUs() public {
