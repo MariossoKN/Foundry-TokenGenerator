@@ -46,16 +46,8 @@ contract Token is ERC20 {
     /**
      * @dev
      */
-    function buy(uint256 _amount) external payable onlyTokenGenerator {
+    function mint(uint256 _amount) external payable onlyTokenGenerator {
         _mint(i_tokenGenerator, _amount);
-    }
-
-    function withdrawBuyerFunds(
-        address _to,
-        uint256 _amount
-    ) external payable onlyTokenGenerator {
-        (bool success, ) = (_to).call{value: _amount}("");
-        require(success, "Funds withdraw failed");
     }
 
     ///////////////////////////
