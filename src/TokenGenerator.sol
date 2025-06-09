@@ -26,12 +26,15 @@ contract TokenGenerator {
     error TokenGenerator__ExceedsMaxSupply();
     error TokenGenerator__ICODeadlineExpired();
     error TokenGenerator__TokenICOActive();
+    error TokenGenerator__TokenICONotActive();
     error TokenGenerator__TokenSaleActive();
     error TokenGenerator__InvalidStageCalculation();
     error TokenGenerator__ZeroAddressNotAllowed();
     error TokenGenerator__NoEthToWithdraw();
     error TokenGenerator__FundingGoalNotMet();
-    error TokenGenerator__ICONotActive();
+    error TokenGenerator__FundingNotComplete();
+    error TokenGenerator__TokenFundingComplete();
+    error TokenGenerator__NoTokensLeft();
 
     // Events
     event TokenCreated(
@@ -48,7 +51,7 @@ contract TokenGenerator {
         bool isICOActive
     );
 
-    event BuyerFundsWithdrawed(
+    event BuyerFundsWithdrawn(
         address indexed tokenAddress,
         address indexed callerAddres,
         uint256 indexed ethAmountWithdrawed
@@ -61,10 +64,16 @@ contract TokenGenerator {
 
     event FeesWithdrawed(address owner, uint256 ethAmount);
 
-    event PoolCreatedLiqudityAddedLPTokensBurned(
+    event PoolCreatedliquidityAddedLPTokensBurned(
         address tokenAddress,
         address poolAddress,
-        uint256 liqudityBurnt
+        uint256 liquidityBurnt
+    );
+
+    event TokensClaimed(
+        address tokenAddress,
+        address buyerAddress,
+        uint256 tokenAmountClaimed
     );
 
     // Modifiers
@@ -123,11 +132,12 @@ contract TokenGenerator {
     uint256 private constant FUNDING_GOAL = 21 ether;
 
     struct TokenData {
-        uint256 tokenAmountMinted;
-        uint256 tokenStage;
-        uint256 tokenCreationTimestamp;
-        bool tokenICOActive;
+        uint256 amountMinted;
+        uint256 stage;
+        uint256 creationTimestamp;
         uint256 ethFunded;
+        bool icoActive;
+        bool fundingComplete;
     }
 
     struct BuyerData {
@@ -177,11 +187,12 @@ contract TokenGenerator {
 
         s_tokens.push(tokenAddress);
         s_tokenData[tokenAddress] = TokenData({
-            tokenAmountMinted: 0,
-            tokenStage: 0,
-            tokenCreationTimestamp: block.timestamp,
-            tokenICOActive: false,
-            ethFunded: 0
+            amountMinted: 0,
+            stage: 0,
+            creationTimestamp: block.timestamp,
+            ethFunded: 0,
+            icoActive: false,
+            fundingComplete: false
         });
 
         s_accumulatedFees += msg.value;
@@ -213,8 +224,8 @@ contract TokenGenerator {
             revert TokenGenerator__InsufficientPayment(totalCost);
         }
 
-        s_tokenData[_tokenAddress].tokenStage = newStage;
-        s_tokenData[_tokenAddress].tokenAmountMinted += _tokenAmount;
+        s_tokenData[_tokenAddress].stage = newStage;
+        s_tokenData[_tokenAddress].amountMinted += _tokenAmount;
         s_tokenData[_tokenAddress].ethFunded += msg.value;
         s_buyerData[_tokenAddress][msg.sender]
             .tokenAmountPurchased += _tokenAmount;
@@ -224,18 +235,18 @@ contract TokenGenerator {
             getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
             TRADEABLE_SUPPLY
         ) {
-            s_tokenData[_tokenAddress].tokenICOActive = true;
+            s_tokenData[_tokenAddress].fundingComplete = true;
         }
 
         Token token = Token(_tokenAddress);
-        token.buy(_tokenAmount);
+        token.mint(_tokenAmount);
 
         emit TokenPurchase(
             _tokenAddress,
             _tokenAmount,
             msg.sender,
             msg.value,
-            s_tokenData[_tokenAddress].tokenICOActive
+            s_tokenData[_tokenAddress].fundingComplete
         );
     }
 
@@ -316,14 +327,13 @@ contract TokenGenerator {
      * @dev Only callable after ICO deadline,
      *      resets buyer's spent amount and transfers ETH to caller
      */
-    function withdrawFailedLaunchFunds(address _tokenAddress) external payable {
-        if (getTokenICOStatus(_tokenAddress)) {
-            revert TokenGenerator__TokenICOActive();
+    function withdrawFailedLaunchFunds(
+        address _tokenAddress
+    ) external cantBeZeroAddress(_tokenAddress) {
+        if (getTokenFundingComplete(_tokenAddress)) {
+            revert TokenGenerator__TokenFundingComplete();
         }
-        if (
-            !isTokenDeadlineExpired(_tokenAddress) &&
-            !getTokenICOStatus(_tokenAddress)
-        ) {
+        if (!isTokenDeadlineExpired(_tokenAddress)) {
             revert TokenGenerator__TokenSaleActive();
         }
 
@@ -337,7 +347,7 @@ contract TokenGenerator {
         (bool success, ) = (msg.sender).call{value: amountToWithdraw}("");
         require(success, "Fund withdrawal failed");
 
-        emit BuyerFundsWithdrawed(_tokenAddress, msg.sender, amountToWithdraw);
+        emit BuyerFundsWithdrawn(_tokenAddress, msg.sender, amountToWithdraw);
     }
 
     /**
@@ -375,6 +385,10 @@ contract TokenGenerator {
     ) external returns (address poolAddress, uint256 liquidity) {
         _validateICO(_tokenAddress);
 
+        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
+        s_tokenData[_tokenAddress].ethFunded = 0;
+        s_tokenData[_tokenAddress].icoActive = true;
+
         // check/create pool
         address weth = IUniswapV2Router02(i_uniswapV2Router).WETH();
         poolAddress = i_uniswapV2Factory.getPair(_tokenAddress, weth);
@@ -388,9 +402,6 @@ contract TokenGenerator {
             INITIAL_SUPPLY
         );
 
-        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
-        s_tokenData[_tokenAddress].ethFunded = 0;
-
         // create liquidity for the pair
         (, , liquidity) = i_uniswapV2Router.addLiquidityETH{value: ethFunded}(
             _tokenAddress,
@@ -401,15 +412,34 @@ contract TokenGenerator {
             block.timestamp
         );
 
-        // burn liqudity tokens
+        // burn liquidity tokens
         IUniswapV2Pair pool = IUniswapV2Pair(poolAddress);
         pool.transfer(address(0), liquidity);
 
-        emit PoolCreatedLiqudityAddedLPTokensBurned(
+        emit PoolCreatedliquidityAddedLPTokensBurned(
             _tokenAddress,
             poolAddress,
             liquidity
         );
+    }
+
+    function claimTokens(
+        address _tokenAddress
+    ) external cantBeZeroAddress(_tokenAddress) {
+        if (!s_tokenData[_tokenAddress].icoActive) {
+            revert TokenGenerator__TokenICONotActive();
+        }
+        uint256 tokenAmountPurchased = s_buyerData[_tokenAddress][msg.sender]
+            .tokenAmountPurchased;
+        if (tokenAmountPurchased == 0) {
+            revert TokenGenerator__NoTokensLeft();
+        }
+
+        s_buyerData[_tokenAddress][msg.sender].tokenAmountPurchased = 0;
+
+        Token(_tokenAddress).transfer(msg.sender, tokenAmountPurchased);
+
+        emit TokensClaimed(_tokenAddress, msg.sender, tokenAmountPurchased);
     }
 
     /**
@@ -434,16 +464,15 @@ contract TokenGenerator {
         ) {
             revert TokenGenerator__ExceedsMaxSupply();
         }
-        if (getTokenICOStatus(_tokenAddress)) {
-            revert TokenGenerator__TokenICOActive();
-        }
+        // if (getTokenICOStatus(_tokenAddress)) {
+        //     revert TokenGenerator__TokenICOActive();
+        // }
         if (getTokenCreationTimestamp(_tokenAddress) == 0) {
             revert TokenGenerator__InvalidTokenAddress();
         }
         if (_tokenAmount == 0) {
             revert TokenGenerator__InvalidTokenAmount();
         }
-
         if (isTokenDeadlineExpired(_tokenAddress)) {
             revert TokenGenerator__ICODeadlineExpired();
         }
@@ -452,8 +481,11 @@ contract TokenGenerator {
     function _validateICO(
         address _tokenAddress
     ) internal view cantBeZeroAddress(_tokenAddress) {
-        if (s_tokenData[_tokenAddress].tokenICOActive != true) {
-            revert TokenGenerator__ICONotActive();
+        if (!s_tokenData[_tokenAddress].fundingComplete) {
+            revert TokenGenerator__FundingNotComplete();
+        }
+        if (s_tokenData[_tokenAddress].icoActive) {
+            revert TokenGenerator__TokenICOActive();
         }
         if (getTokenEthAmountFunded(_tokenAddress) != FUNDING_GOAL) {
             revert TokenGenerator__FundingGoalNotMet();
@@ -466,30 +498,25 @@ contract TokenGenerator {
     function getCurrentSupplyWithoutInitialSupply(
         address tokenAddress
     ) public view returns (uint256) {
-        return s_tokenData[tokenAddress].tokenAmountMinted;
+        return s_tokenData[tokenAddress].amountMinted;
     }
 
     function getElapsedTimeSinceCreation(
         address _tokenAddress
     ) public view returns (uint256) {
-        return (block.timestamp -
-            s_tokenData[_tokenAddress].tokenCreationTimestamp);
+        return (block.timestamp - s_tokenData[_tokenAddress].creationTimestamp);
     }
 
     function getTokenCreationTimestamp(
         address _tokenAddress
     ) public view returns (uint256) {
-        return s_tokenData[_tokenAddress].tokenCreationTimestamp;
-    }
-
-    function getTokenICOStatus(address _address) public view returns (bool) {
-        return s_tokenData[_address].tokenICOActive;
+        return s_tokenData[_tokenAddress].creationTimestamp;
     }
 
     function getCurrentPricingStage(
         address tokenAddress
     ) public view returns (uint256) {
-        return s_tokenData[tokenAddress].tokenStage;
+        return s_tokenData[tokenAddress].stage;
     }
 
     function isTokenDeadlineExpired(
@@ -504,6 +531,12 @@ contract TokenGenerator {
         address _tokenAddress
     ) public view returns (uint256) {
         return s_tokenData[_tokenAddress].ethFunded;
+    }
+
+    function getTokenFundingComplete(
+        address _tokenAddress
+    ) public view returns (bool) {
+        return s_tokenData[_tokenAddress].fundingComplete;
     }
 
     /////////////////////////////
@@ -583,6 +616,10 @@ contract TokenGenerator {
 
     function getIcoDeadlineInDays() external view returns (uint256) {
         return i_icoDeadlineInDays;
+    }
+
+    function getTokenICOStatus(address _address) external view returns (bool) {
+        return s_tokenData[_address].icoActive;
     }
 
     ///////////////////////////
