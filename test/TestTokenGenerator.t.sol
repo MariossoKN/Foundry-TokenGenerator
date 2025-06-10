@@ -3284,8 +3284,9 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
-    // ***** Gas tests ***** //
+    // *************************** Gas tests *************************** //
 
+    // *** purchaseToken *** //
     function testCheckGasCostWithPurchaseAndCreatePairAddLiqudityBurnTokens()
         public
     {
@@ -3312,5 +3313,67 @@ contract TestTokenGenerator is StdCheats, Test {
         // without createPoolAndAddLiquidityAndBurnLPTokens call:     159 777
     }
 
-    function testCheckGasPurchase() public {}
+    function testCheckGasPurchase() public {
+        createToken();
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            800000
+        );
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            800000,
+            newStage
+        );
+
+        uint256 gasStart = gasleft();
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, 800000);
+
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // with storage writes:                                                        159 777
+        // with cached storage:                                                        159 132
+        // with cached storage + updated validate function:                            158 664
+        // with cached storage + updated validate function + optimized struct packing: 138 998
+    }
+
+    // *** calculatePurchaseCost *** //
+    function testGasCalculatePurchaseCost() public {
+        createToken();
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            800000
+        );
+
+        uint256 gasStart = gasleft();
+
+        tokenGenerator.calculatePurchaseCost(tokenAddress, 800000, newStage);
+
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // with storage writes:             51 367
+        // with chached storage pointer:    51 231
+    }
+
+    function testGasCreatePairAddLiqudityBurnTokens() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
+
+        uint256 gasStart = gasleft();
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // with storage writes:             2 759 664
+        // with chached storage pointer:    2 759 500
+    }
 }
