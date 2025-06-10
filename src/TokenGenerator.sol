@@ -131,13 +131,22 @@ contract TokenGenerator {
     uint256 private constant TRADEABLE_SUPPLY = 8e5;
     uint256 private constant FUNDING_GOAL = 21 ether;
 
+    // struct TokenData {
+    //     uint256 amountMinted;
+    //     uint256 stage;
+    //     uint256 creationTimestamp;
+    //     uint256 ethFunded;
+    //     bool icoActive;
+    //     bool fundingComplete;
+    // }
+
     struct TokenData {
-        uint256 amountMinted;
-        uint256 stage;
-        uint256 creationTimestamp;
-        uint256 ethFunded;
-        bool icoActive;
-        bool fundingComplete;
+        uint256 amountMinted; // 32 bytes - Slot 0
+        uint256 ethFunded; // 32 bytes - Slot 1
+        uint256 creationTimestamp; // 32 bytes - Slot 2
+        uint8 stage; // 1 byte   - Slot 3 (start)
+        bool icoActive; // 1 byte   - Slot 3
+        bool fundingComplete; // 1 byte   - Slot 3 (30 bytes remaining)
     }
 
     struct BuyerData {
@@ -214,7 +223,7 @@ contract TokenGenerator {
     ) external payable {
         _validatePurchase(_tokenAddress, _tokenAmount);
 
-        uint256 newStage = calculateNewStage(_tokenAddress, _tokenAmount);
+        uint8 newStage = calculateNewStage(_tokenAddress, _tokenAmount);
         uint256 totalCost = calculatePurchaseCost(
             _tokenAddress,
             _tokenAmount,
@@ -303,15 +312,15 @@ contract TokenGenerator {
     function calculateNewStage(
         address _tokenAddress,
         uint256 _tokenAmount
-    ) public view returns (uint256 newStage) {
-        uint256 currentStage = getCurrentPricingStage(_tokenAddress);
+    ) public view returns (uint8 newStage) {
+        uint8 currentStage = getCurrentPricingStage(_tokenAddress);
         uint256 newTokenSupply = getCurrentSupplyWithoutInitialSupply(
             _tokenAddress
         ) + _tokenAmount;
         if (newTokenSupply == TRADEABLE_SUPPLY) {
             return 7;
         }
-        for (uint256 i = currentStage; i < 8; i++) {
+        for (uint8 i = currentStage; i < 8; i++) {
             if (s_tokenStageSupply[i] > newTokenSupply) {
                 return i;
             }
@@ -385,9 +394,10 @@ contract TokenGenerator {
     ) external returns (address poolAddress, uint256 liquidity) {
         _validateICO(_tokenAddress);
 
-        uint256 ethFunded = s_tokenData[_tokenAddress].ethFunded;
-        s_tokenData[_tokenAddress].ethFunded = 0;
-        s_tokenData[_tokenAddress].icoActive = true;
+        TokenData storage tokenData = s_tokenData[_tokenAddress];
+        uint256 ethFunded = tokenData.ethFunded;
+        tokenData.ethFunded = 0;
+        tokenData.icoActive = true;
 
         // check/create pool
         address weth = IUniswapV2Router02(i_uniswapV2Router).WETH();
@@ -458,22 +468,21 @@ contract TokenGenerator {
         address _tokenAddress,
         uint256 _tokenAmount
     ) internal view cantBeZeroAddress(_tokenAddress) {
-        if (
-            getCurrentSupplyWithoutInitialSupply(_tokenAddress) + _tokenAmount >
-            TRADEABLE_SUPPLY
-        ) {
+        TokenData storage tokenData = s_tokenData[_tokenAddress];
+
+        if (tokenData.amountMinted + _tokenAmount > TRADEABLE_SUPPLY) {
             revert TokenGenerator__ExceedsMaxSupply();
         }
-        // if (getTokenICOStatus(_tokenAddress)) {
-        //     revert TokenGenerator__TokenICOActive();
-        // }
-        if (getTokenCreationTimestamp(_tokenAddress) == 0) {
+        if (tokenData.creationTimestamp == 0) {
             revert TokenGenerator__InvalidTokenAddress();
         }
         if (_tokenAmount == 0) {
             revert TokenGenerator__InvalidTokenAmount();
         }
-        if (isTokenDeadlineExpired(_tokenAddress)) {
+        if (
+            block.timestamp >
+            tokenData.creationTimestamp + (i_icoDeadlineInDays * 1 days)
+        ) {
             revert TokenGenerator__ICODeadlineExpired();
         }
     }
@@ -515,7 +524,7 @@ contract TokenGenerator {
 
     function getCurrentPricingStage(
         address tokenAddress
-    ) public view returns (uint256) {
+    ) public view returns (uint8) {
         return s_tokenData[tokenAddress].stage;
     }
 
