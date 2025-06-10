@@ -12,31 +12,22 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  */
 
 contract Token is ERC20 {
-    // Modifiers
-    modifier onlyTokenGenerator() {
-        if (msg.sender != i_tokenGenerator) {
-            revert Token__OnlyTokenGeneratorContractCanCallThis();
-        }
-        _;
-    }
-
     // Storage values
     address private immutable i_tokenCreator;
     address private immutable i_tokenGenerator;
 
     // Errors
     error Token__OnlyTokenGeneratorContractCanCallThis();
-    error Token__ExceededTheMaxFundedAmount();
 
     /**
      * @dev
      */
     constructor(
-        string memory _name,
-        string memory _symbol,
+        string memory _tokenName,
+        string memory _tokenSymbol,
         uint256 _initialSupply,
         address _tokenCreator
-    ) ERC20(_name, _symbol) {
+    ) ERC20(_tokenName, _tokenSymbol) {
         i_tokenCreator = _tokenCreator;
         i_tokenGenerator = msg.sender;
 
@@ -46,18 +37,21 @@ contract Token is ERC20 {
     /**
      * @dev
      */
-    function mint(uint256 _amount) external payable onlyTokenGenerator {
+    function mint(uint256 _amount) external payable {
+        if (msg.sender != i_tokenGenerator) {
+            revert Token__OnlyTokenGeneratorContractCanCallThis();
+        }
         _mint(i_tokenGenerator, _amount);
     }
 
     ///////////////////////////
     // PUBLIC VIEW FUNCTIONS //
     ///////////////////////////
-    function getTokenCreator() public view returns (address) {
+    function getTokenCreator() external view returns (address) {
         return i_tokenCreator;
     }
 
-    function getTokenGeneratorAddress() public view returns (address) {
+    function getTokenGeneratorAddress() external view returns (address) {
         return i_tokenGenerator;
     }
 
