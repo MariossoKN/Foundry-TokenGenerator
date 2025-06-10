@@ -224,29 +224,28 @@ contract TokenGenerator {
             revert TokenGenerator__InsufficientPayment(totalCost);
         }
 
-        s_tokenData[_tokenAddress].stage = newStage;
-        s_tokenData[_tokenAddress].amountMinted += _tokenAmount;
-        s_tokenData[_tokenAddress].ethFunded += msg.value;
-        s_buyerData[_tokenAddress][msg.sender]
-            .tokenAmountPurchased += _tokenAmount;
-        s_buyerData[_tokenAddress][msg.sender].amountEthSpent += msg.value;
+        TokenData storage tokenData = s_tokenData[_tokenAddress];
+        BuyerData storage buyerData = s_buyerData[_tokenAddress][msg.sender];
 
-        if (
-            getCurrentSupplyWithoutInitialSupply(_tokenAddress) ==
-            TRADEABLE_SUPPLY
-        ) {
-            s_tokenData[_tokenAddress].fundingComplete = true;
+        tokenData.stage = newStage;
+        tokenData.amountMinted += _tokenAmount;
+        tokenData.ethFunded += msg.value;
+
+        buyerData.tokenAmountPurchased += _tokenAmount;
+        buyerData.amountEthSpent += msg.value;
+
+        if (tokenData.amountMinted == TRADEABLE_SUPPLY) {
+            tokenData.fundingComplete = true;
         }
 
-        Token token = Token(_tokenAddress);
-        token.mint(_tokenAmount);
+        Token(_tokenAddress).mint(_tokenAmount);
 
         emit TokenPurchase(
             _tokenAddress,
             _tokenAmount,
             msg.sender,
             msg.value,
-            s_tokenData[_tokenAddress].fundingComplete
+            tokenData.fundingComplete
         );
     }
 
@@ -264,33 +263,33 @@ contract TokenGenerator {
         uint256 _tokenAmount,
         uint256 _newStage
     ) public view returns (uint256 totalCost) {
-        uint256 currentStage = getCurrentPricingStage(_tokenAddress);
+        TokenData storage tokenData = s_tokenData[_tokenAddress];
+        uint256 currentStage = tokenData.stage;
 
         if (_newStage < currentStage || _newStage > 7) {
             revert TokenGenerator__InvalidStageCalculation();
         }
 
-        uint256 tokenCurrentSupply = getCurrentSupplyWithoutInitialSupply(
-            _tokenAddress
-        );
+        uint256 tokenCurrentSupply = tokenData.amountMinted;
         uint256 remainingTokens = _tokenAmount;
 
+        uint256[] storage stageSupply = s_tokenStageSupply;
+        uint256[] storage stagePrices = s_tokenStagePrice;
+
         for (uint256 i = currentStage; i <= _newStage; ) {
-            uint256 stageSupplyLimit = s_tokenStageSupply[i];
+            uint256 stageSupplyLimit = stageSupply[i];
             uint256 availableInStage = stageSupplyLimit - tokenCurrentSupply;
 
             if (remainingTokens <= availableInStage) {
-                totalCost += s_tokenStagePrice[i] * remainingTokens;
+                totalCost += stagePrices[i] * remainingTokens;
                 return totalCost;
             } else {
-                totalCost += s_tokenStagePrice[i] * availableInStage;
+                totalCost += stagePrices[i] * availableInStage;
                 tokenCurrentSupply = stageSupplyLimit;
                 remainingTokens -= availableInStage;
             }
-
             ++i;
         }
-        // This should never be reached with proper input validation
         return totalCost;
     }
 
@@ -379,7 +378,8 @@ contract TokenGenerator {
         emit OwnerAddressChanged(previousOwner, _newOwner);
     }
 
-    // this has to be called separetly (and not inside of purchase function) because it is super gas expensive (3+mil)
+    // if we implement this to the purchaseTokens function, the last buyer has to pay a lot more gas (~3mil)
+    // thats why it should be called separetly - by Chainlink Automation? or by creating a function which will be profitable for the caller to call it
     function createPoolAndAddLiquidityAndBurnLPTokens(
         address _tokenAddress
     ) external returns (address poolAddress, uint256 liquidity) {
