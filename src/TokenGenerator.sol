@@ -131,22 +131,13 @@ contract TokenGenerator {
     uint256 private constant TRADEABLE_SUPPLY = 8e5;
     uint256 private constant FUNDING_GOAL = 21 ether;
 
-    // struct TokenData {
-    //     uint256 amountMinted;
-    //     uint256 stage;
-    //     uint256 creationTimestamp;
-    //     uint256 ethFunded;
-    //     bool icoActive;
-    //     bool fundingComplete;
-    // }
-
     struct TokenData {
-        uint256 amountMinted; // 32 bytes - Slot 0
-        uint256 ethFunded; // 32 bytes - Slot 1
-        uint256 creationTimestamp; // 32 bytes - Slot 2
-        uint8 stage; // 1 byte   - Slot 3 (start)
-        bool icoActive; // 1 byte   - Slot 3
-        bool fundingComplete; // 1 byte   - Slot 3 (30 bytes remaining)
+        uint256 amountMinted;
+        uint256 ethFunded;
+        uint256 creationTimestamp;
+        uint8 stage;
+        bool icoActive;
+        bool fundingComplete;
     }
 
     struct BuyerData {
@@ -457,12 +448,11 @@ contract TokenGenerator {
      * @param _tokenAddress The token being purchased
      * @param _tokenAmount Amount being purchased
      * @dev Validates that:
-     *  1) the token amount doesnt exceed tradeable supply,
-     *  2) provided token address is not address zero,
-     *  3) the ICO is not active,
-     *  4) the provided token address exists,
-     *  5) token amount is not zero,
-     *  6) deadline not expired.
+     *  1) provided token address is not address zero,
+     *  2) the token amount doesnt exceed tradeable supply,
+     *  3) the provided token address exists,
+     *  4) token amount is not zero,
+     *  5) deadline not expired.
      */
     function _validatePurchase(
         address _tokenAddress,
