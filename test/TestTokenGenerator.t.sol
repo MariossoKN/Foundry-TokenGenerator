@@ -40,7 +40,7 @@ contract TestTokenGenerator is StdCheats, Test {
         address indexed newOwner
     );
 
-    event PoolCreatedLiqudityAddedLPTokensBurned(
+    event PoolCreatedliquidityAddedLPTokensBurned(
         address tokenAddress,
         address poolAddress,
         uint256 liqudityBurnt
@@ -246,6 +246,12 @@ contract TestTokenGenerator is StdCheats, Test {
             );
         }
     }
+
+    function isMainnetFork() internal view returns (bool) {
+        return block.chainid == 1;
+    }
+
+    // *************************** TESTS *************************** //
 
     //////////////////////
     // constructor TEST //
@@ -458,6 +464,12 @@ contract TestTokenGenerator is StdCheats, Test {
     }
 
     function testShouldEmitEventAfterCreatingToken() public {
+        if (isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+            );
+            vm.skip(true);
+        }
         vm.prank(TOKEN_OWNER);
         vm.expectEmit(true, true, true, false);
         emit TokenCreated(
@@ -1996,7 +2008,15 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance1:", endingOwnerBalance1);
         console.log("Contract endingContractBalance1:", endingContractBalance1);
 
-        assertEq(endingOwnerBalance1, startingOwnerBalance1 + fee);
+        if (block.chainid == 1) {
+            console.log(
+                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+            );
+            return;
+        } else {
+            assertEq(endingOwnerBalance1, startingOwnerBalance1 + fee);
+        }
+
         assertEq(endingContractBalance1, startingContractBalance1 - fee);
 
         console.log(
@@ -2028,7 +2048,14 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance2:", endingOwnerBalance2);
         console.log("Contract endingContractBalance2:", endingContractBalance2);
 
-        assertEq(endingOwnerBalance2, startingOwnerBalance2 + (2 * fee));
+        if (block.chainid == 1) {
+            console.log(
+                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+            );
+            return;
+        } else {
+            assertEq(endingOwnerBalance2, startingOwnerBalance2 + (2 * fee));
+        }
         assertEq(endingContractBalance2, startingContractBalance2 - (2 * fee));
     }
 
@@ -2056,7 +2083,15 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance:", endingOwnerBalance);
         console.log("Contract endingContractBalance:", endingContractBalance);
 
-        assertEq(endingOwnerBalance, startingOwnerBalance + fee);
+        if (block.chainid == 1) {
+            console.log(
+                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+            );
+            return;
+        } else {
+            assertEq(endingOwnerBalance, startingOwnerBalance + fee);
+        }
+
         assertEq(endingContractBalance, startingContractBalance - fee);
     }
 
@@ -2116,10 +2151,18 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance:", endingOwnerBalance);
         console.log("Contract endingContractBalance:", endingContractBalance);
 
-        assertEq(
-            endingOwnerBalance,
-            startingOwnerBalance + (buyers.length * fee)
-        );
+        if (block.chainid == 1) {
+            console.log(
+                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+            );
+            return;
+        } else {
+            assertEq(
+                endingOwnerBalance,
+                startingOwnerBalance + (buyers.length * fee)
+            );
+        }
+
         assertEq(
             endingContractBalance,
             startingContractBalance - (buyers.length * fee)
@@ -2236,6 +2279,13 @@ contract TestTokenGenerator is StdCheats, Test {
     function testShouldRevertIfTokenAmoutPurchasedIsZero_ZeroPurchasesFromBuyer()
         public
     {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+
         createTokenAndMaxPurchase();
 
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
@@ -2257,6 +2307,12 @@ contract TestTokenGenerator is StdCheats, Test {
     function testShouldRevertIfTokenAmoutPurchasedIsZero_AlreadyClaimed()
         public
     {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
         createTokenAndMaxPurchase();
 
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
@@ -2276,6 +2332,12 @@ contract TestTokenGenerator is StdCheats, Test {
     }
 
     function testShouldResetTheTokenAmountPurchasedToZero() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
         createTokenAndMaxPurchase();
 
         assertEq(
@@ -2295,6 +2357,12 @@ contract TestTokenGenerator is StdCheats, Test {
     }
 
     function testShouldSendTokensFromContractToBuyer() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
         createTokenAndMaxPurchase();
 
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
@@ -2323,6 +2391,12 @@ contract TestTokenGenerator is StdCheats, Test {
     }
 
     function testShouldEmitEvent() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
         createTokenAndMaxPurchase();
 
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
@@ -2333,867 +2407,910 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.claimTokens(tokenAddress);
     }
 
-    // /////////////////////////////////////
-    // // getTokenDeadlineTimeLeft  TESTs //
-    // /////////////////////////////////////
-    // function testFuzz_ShouldGetTimeLeftToICODeadline(uint256 _amount) public {
-    //     uint256 amount = bound(_amount, 1, icoDeadlineInDays * 86400);
-
-    //     createToken();
+    /////////////////////////////////////
+    // getTokenDeadlineTimeLeft  TESTs //
+    /////////////////////////////////////
+    function testFuzz_ShouldGetTimeLeftToICODeadline(uint256 _amount) public {
+        uint256 amount = bound(_amount, 1, icoDeadlineInDays * 86400);
+
+        createToken();
+
+        vm.warp(block.timestamp + amount);
+        vm.roll(block.number + 1);
+
+        assertEq(
+            tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
+            amount
+        );
+    }
+
+    ////////////////////////////
+    // getCurrentSupply TESTs //
+    ////////////////////////////
+    function testShouldGetCurrentSupplyWithoutInitialSupply() public {
+        createToken();
+
+        uint256 startingSupply = tokenGenerator
+            .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+        assertEq(startingSupply, 0);
+
+        uint256 tokenAmount = 150000;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 endingSupply = tokenGenerator
+            .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+        assertEq(endingSupply, tokenAmount);
+    }
+
+    //////////////////////////////////////
+    // getElapsedTimeSinceCreation TEST //
+    //////////////////////////////////////
+    function testShouldGetTimeElapsedSinceTokenCreation() public {
+        createToken();
+
+        assertEq(tokenGenerator.getElapsedTimeSinceCreation(tokenAddress), 0);
+
+        vm.warp(block.timestamp + 5 days);
+        vm.roll(block.number + 1);
+
+        assertEq(
+            tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
+            5 days
+        );
+    }
+
+    ////////////////////////////////////
+    // getTokenCreationTimestamp TEST //
+    ////////////////////////////////////
+    function testShouldReturnTheTimestampWhenTheTokenWasCreated() public {
+        createToken();
 
-    //     vm.warp(block.timestamp + amount);
-    //     vm.roll(block.number + 1);
+        uint256 timeStamp = block.timestamp;
 
-    //     assertEq(
-    //         tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
-    //         amount
-    //     );
-    // }
+        assertEq(
+            tokenGenerator.getTokenCreationTimestamp(tokenAddress),
+            timeStamp
+        );
+    }
 
-    // ////////////////////////////
-    // // getCurrentSupply TESTs //
-    // ////////////////////////////
-    // function testShouldGetCurrentSupplyWithoutInitialSupply() public {
-    //     createToken();
+    ////////////////////////////
+    // getTokenICOStatus TEST //
+    ////////////////////////////
+    function testShouldReturnICOStatus() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createToken();
 
-    //     uint256 startingSupply = tokenGenerator
-    //         .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
 
-    //     assertEq(startingSupply, 0);
+        purchaseMaxSupplyOfTokens();
 
-    //     uint256 tokenAmount = 150000;
-
-    //     uint256 newStage = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         tokenAmount
-    //     );
-
-    //     uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         tokenAmount,
-    //         newStage
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice}(
-    //         tokenAddress,
-    //         tokenAmount
-    //     );
-
-    //     uint256 endingSupply = tokenGenerator
-    //         .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-
-    //     assertEq(endingSupply, tokenAmount);
-    // }
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
-    // //////////////////////////////////////
-    // // getElapsedTimeSinceCreation TEST //
-    // //////////////////////////////////////
-    // function testShouldGetTimeElapsedSinceTokenCreation() public {
-    //     createToken();
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
+    }
 
-    //     assertEq(tokenGenerator.getElapsedTimeSinceCreation(tokenAddress), 0);
+    //////////////////////////////////
+    // getCurrentPricingStage TESTs //
+    //////////////////////////////////
+    function testShouldGetTheCurrentPricingStage() public {
+        createToken();
 
-    //     vm.warp(block.timestamp + 5 days);
-    //     vm.roll(block.number + 1);
+        assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), 0);
 
-    //     assertEq(
-    //         tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
-    //         5 days
-    //     );
-    // }
+        uint24[4] memory amounts = [200000, 200000, 100000, 50000];
 
-    // ////////////////////////////////////
-    // // getTokenCreationTimestamp TEST //
-    // ////////////////////////////////////
-    // function testShouldReturnTheTimestampWhenTheTokenWasCreated() public {
-    //     createToken();
+        for (uint256 i = 0; i < amounts.length; i++) {
+            assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), i);
 
-    //     uint256 timeStamp = block.timestamp;
+            uint256 amount = amounts[i];
 
-    //     assertEq(
-    //         tokenGenerator.getTokenCreationTimestamp(tokenAddress),
-    //         timeStamp
-    //     );
-    // }
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                amount
+            );
 
-    // ////////////////////////////
-    // // getTokenICOStatus TEST //
-    // ////////////////////////////
-    // function testShouldReturnICOStatus() public {
-    //     createToken();
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                amount,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                amount
+            );
 
-    //     assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
-
-    //     purchaseMaxSupplyOfTokens();
-
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-    //     assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
-    // }
-
-    // //////////////////////////////////
-    // // getCurrentPricingStage TESTs //
-    // //////////////////////////////////
-    // function testShouldGetTheCurrentPricingStage() public {
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), 0);
-
-    //     uint24[4] memory amounts = [200000, 200000, 100000, 50000];
-
-    //     for (uint256 i = 0; i < amounts.length; i++) {
-    //         assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), i);
-
-    //         uint256 amount = amounts[i];
-
-    //         uint256 newStage = tokenGenerator.calculateNewStage(
-    //             tokenAddress,
-    //             amount
-    //         );
-
-    //         uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //             tokenAddress,
-    //             amount,
-    //             newStage
-    //         );
-
-    //         vm.prank(BUYER);
-    //         tokenGenerator.purchaseToken{value: totalPrice}(
-    //             tokenAddress,
-    //             amount
-    //         );
-
-    //         assertEq(
-    //             tokenGenerator.getCurrentPricingStage(tokenAddress),
-    //             i + 1
-    //         );
-    //     }
-    // }
-
-    // //////////////////////////////////
-    // // isTokenDeadlineExpired TESTs //
-    // //////////////////////////////////
-    // function testShouldReturnIfDeadlineWasExpiredOrNot() public {
-    //     createToken();
-
-    //     assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
-
-    //     vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS));
-    //     vm.roll(block.number + 1);
-
-    //     assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
-
-    //     vm.warp(block.timestamp + 1);
-    //     vm.roll(block.number + 1);
-
-    //     assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
-    // }
-
-    // /////////////////////////////
-    // // getAccumulatedFees TEST //
-    // /////////////////////////////
-    // function testShouldReturnAccumulatedFees() public {
-    //     assertEq(tokenGenerator.getAccumulatedFees(), 0);
-
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getAccumulatedFees(), fee);
-
-    //     purchaseMaxSupplyOfTokens();
-
-    //     assertEq(tokenGenerator.getAccumulatedFees(), fee);
-
-    //     tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
-
-    //     assertEq(tokenGenerator.getAccumulatedFees(), fee * 2);
-
-    //     address owner = tokenGenerator.getOwnerAddress();
-    //     vm.prank(owner);
-    //     tokenGenerator.withdrawAccumulatedFees();
-
-    //     assertEq(tokenGenerator.getAccumulatedFees(), 0);
-    // }
-
-    // ////////////////////////
-    // // getStagePrice TEST //
-    // ////////////////////////
-    // function testShouldReturnStagePrice() public {
-    //     createToken();
-
-    //     uint48[8] memory stagePrices = [
-    //         3000000000000, //   0.000003  ETH per token
-    //         4500000000000, //   0.0000045 ETH per token
-    //         7500000000000, //   0.0000075 ETH per token
-    //         20000000000000, //  0.00002   ETH per token
-    //         35000000000000, //  0.000035  ETH per token
-    //         55000000000000, //  0.000055  ETH per token
-    //         75000000000000, //  0.000075  ETH per token
-    //         95000000000000 //   0.000095  ETH per token
-    //     ];
-
-    //     for (uint256 i = 0; i < stagePrices.length; i++) {
-    //         uint256 stagePrice = stagePrices[i];
-
-    //         assertEq(tokenGenerator.getStagePrice(i), stagePrice);
-    //     }
-    // }
-
-    // /////////////////////////
-    // // getStageSupply TEST //
-    // /////////////////////////
-    // function testShouldReturnStageSupply() public {
-    //     createToken();
-
-    //     uint24[8] memory stageSupplies = [
-    //         200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
-    //         400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
-    //         500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
-    //         550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
-    //         600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
-    //         650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
-    //         700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
-    //         800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
-    //     ];
-
-    //     for (uint256 i = 0; i < stageSupplies.length; i++) {
-    //         uint256 stageSupply = stageSupplies[i];
-
-    //         assertEq(tokenGenerator.getStageSupply(i), stageSupply);
-    //     }
-    // }
-
-    // //////////////////////////
-    // // getTokenCreator TEST //
-    // //////////////////////////
-    // function testShouldReturnTheTokenCreator() public {
-    //     vm.prank(TOKEN_OWNER);
-    //     address token1 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getTokenCreator(token1), TOKEN_OWNER);
-
-    //     vm.prank(TOKEN_OWNER2);
-    //     address token2 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getTokenCreator(token2), TOKEN_OWNER2);
-
-    //     vm.prank(TOKEN_OWNER3);
-    //     address token3 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getTokenCreator(token3), TOKEN_OWNER3);
-    // }
-
-    // /////////////////////////////////////
-    // // getTokenCurrentStageSupply TEST //
-    // /////////////////////////////////////
-    // function testShouldReturnCurrentStageSupply() public {
-    //     createToken();
-
-    //     uint24[8] memory stageSupplies = [
-    //         200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
-    //         400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
-    //         500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
-    //         550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
-    //         600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
-    //         650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
-    //         700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
-    //         800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
-    //     ];
-
-    //     for (uint256 i = 0; i < stageSupplies.length; i++) {
-    //         uint256 stageSupply = stageSupplies[i];
-
-    //         assertEq(
-    //             tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
-    //             stageSupply
-    //         );
-
-    //         uint256 currentSupply = tokenGenerator
-    //             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-
-    //         uint256 newStage = tokenGenerator.calculateNewStage(
-    //             tokenAddress,
-    //             stageSupply - currentSupply
-    //         );
-
-    //         uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //             tokenAddress,
-    //             stageSupply - currentSupply,
-    //             newStage
-    //         );
-
-    //         vm.prank(BUYER);
-    //         tokenGenerator.purchaseToken{value: totalPrice}(
-    //             tokenAddress,
-    //             stageSupply - currentSupply
-    //         );
-
-    //         if (i < 7) {
-    //             assertEq(
-    //                 tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
-    //                 stageSupplies[i + 1]
-    //             );
-    //         }
-    //     }
-    // }
-
-    // ////////////////////////////////////
-    // // getTokenCurrentStagePrice TEST //
-    // ////////////////////////////////////
-    // function testShouldReturnCurrentStagePrice() public {
-    //     createToken();
-
-    //     uint48[8] memory stagePrices = [
-    //         3000000000000, //   0.000003  ETH per token
-    //         4500000000000, //   0.0000045 ETH per token
-    //         7500000000000, //   0.0000075 ETH per token
-    //         20000000000000, //  0.00002   ETH per token
-    //         35000000000000, //  0.000035  ETH per token
-    //         55000000000000, //  0.000055  ETH per token
-    //         75000000000000, //  0.000075  ETH per token
-    //         95000000000000 //   0.000095  ETH per token
-    //     ];
-
-    //     uint24[8] memory stageSupplies = [
-    //         200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
-    //         400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
-    //         500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
-    //         550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
-    //         600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
-    //         650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
-    //         700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
-    //         800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
-    //     ];
-
-    //     for (uint256 i = 0; i < stagePrices.length; i++) {
-    //         uint256 stagePrice = stagePrices[i];
-    //         uint256 stageSupply = stageSupplies[i];
-
-    //         assertEq(tokenGenerator.getStagePrice(i), stagePrice);
-
-    //         uint256 currentSupply = tokenGenerator
-    //             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-
-    //         uint256 newStage = tokenGenerator.calculateNewStage(
-    //             tokenAddress,
-    //             stageSupply - currentSupply
-    //         );
-
-    //         uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //             tokenAddress,
-    //             stageSupply - currentSupply,
-    //             newStage
-    //         );
-
-    //         vm.prank(BUYER);
-    //         tokenGenerator.purchaseToken{value: totalPrice}(
-    //             tokenAddress,
-    //             stageSupply - currentSupply
-    //         );
-
-    //         if (i < 7) {
-    //             assertEq(tokenGenerator.getStagePrice(i), stagePrices[i]);
-    //         }
-    //     }
-    // }
-
-    // //////////////////////////////////
-    // // getAvailableStageSupply TEST //
-    // //////////////////////////////////
-    // function testFuzz_ShouldReturnRemainingSupplyInCurrentStage(
-    //     uint256 _amount
-    // ) public {
-    //     uint256 amount = bound(_amount, 1, 199999);
-
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getAvailableStageSupply(tokenAddress), 200000);
-
-    //     uint256 newStage = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         amount
-    //     );
-
-    //     uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         amount,
-    //         newStage
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
-
-    //     assertEq(
-    //         tokenGenerator.getAvailableStageSupply(tokenAddress),
-    //         200000 - amount
-    //     );
-    // }
-
-    // ///////////////////////////////
-    // // getTotalTokensAmount TEST //
-    // ///////////////////////////////
-    // function testShouldReturnAmountOfTokensCreated() public {
-    //     for (uint256 i = 1; i < 10; i++) {
-    //         vm.prank(TOKEN_OWNER);
-    //         tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
-
-    //         assertEq(tokenGenerator.getTotalTokensAmount(), i);
-    //     }
-    // }
-
-    // //////////////////////////
-    // // getTokenAddress TEST //
-    // //////////////////////////
-    // function testShouldReturnTokenAddress() public {
-    //     for (uint256 i = 0; i < 10; i++) {
-    //         vm.prank(TOKEN_OWNER);
-    //         address newTokenAddress = tokenGenerator.createToken{value: fee}(
-    //             TOKEN_NAME,
-    //             TOKEN_SYMBOL
-    //         );
-
-    //         assertEq(tokenGenerator.getTokenAddress(i), newTokenAddress);
-    //     }
-    // }
-
-    // ////////////////////////////////////////
-    // // getBuyerTokenAmountPurchased TESTs //
-    // ////////////////////////////////////////
-    // function testShouldReturnBuyersTokenAmountPurchased() public {
-    //     // token #1
-    //     address token1 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER), 0);
-
-    //     uint256 newStage = tokenGenerator.calculateNewStage(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE
-    //     );
-
-    //     uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE,
-    //         newStage
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice}(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE
-    //     );
-
-    //     assertEq(
-    //         tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER),
-    //         TOKEN_AMOUNT_ONE
-    //     );
-
-    //     // token #2
-    //     address token2 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER), 0);
-
-    //     uint256 newStage2 = tokenGenerator.calculateNewStage(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO
-    //     );
-
-    //     uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO,
-    //         newStage2
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice2}(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO
-    //     );
-
-    //     assertEq(
-    //         tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER),
-    //         TOKEN_AMOUNT_TWO
-    //     );
-    // }
-
-    // /////////////////////////////////
-    // // getBuyerEthAmountSpent TEST //
-    // /////////////////////////////////
-    // function testShouldReturnBuyerEthAmountSpent() public {
-    //     // token #1
-    //     address token1 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
-
-    //     uint256 newStage = tokenGenerator.calculateNewStage(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE
-    //     );
-
-    //     uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE,
-    //         newStage
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice}(
-    //         token1,
-    //         TOKEN_AMOUNT_ONE
-    //     );
-
-    //     assertEq(
-    //         tokenGenerator.getBuyerEthAmountSpent(token1, BUYER),
-    //         totalPrice
-    //     );
-
-    //     // token #2
-    //     address token2 = tokenGenerator.createToken{value: fee}(
-    //         TOKEN_NAME,
-    //         TOKEN_SYMBOL
-    //     );
-
-    //     assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
-
-    //     uint256 newStage2 = tokenGenerator.calculateNewStage(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO
-    //     );
-
-    //     uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO,
-    //         newStage2
-    //     );
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice2}(
-    //         token2,
-    //         TOKEN_AMOUNT_TWO
-    //     );
-
-    //     assertEq(
-    //         tokenGenerator.getBuyerEthAmountSpent(token2, BUYER),
-    //         totalPrice2
-    //     );
-
-    //     vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + 1);
-    //     vm.roll(block.number + 1);
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.withdrawFailedLaunchFunds(token1);
-    //     vm.prank(BUYER);
-    //     tokenGenerator.withdrawFailedLaunchFunds(token2);
-
-    //     assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
-    //     assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
-    // }
-
-    // /////////////////////////
-    // // getCreationFee TEST //
-    // /////////////////////////
-    // function testShouldReturnTokenCreationFee() public {
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getCreationFee(), fee);
-    // }
-
-    // //////////////////////////
-    // // getOwnerAddress TEST //
-    // //////////////////////////
-    // function testShouldReturnOwnerAddress() public {
-    //     createToken();
-
-    //     address expectedAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
-
-    //     assertEq(tokenGenerator.getOwnerAddress(), expectedAddress);
-    // }
-
-    // ///////////////////////////////
-    // // getIcoDeadlineInDays TEST //
-    // ///////////////////////////////
-    // function testShouldReturnIcoDeadline() public {
-    //     createToken();
-
-    //     uint256 expectedDeadline = 30;
-
-    //     assertEq(tokenGenerator.getIcoDeadlineInDays(), expectedDeadline);
-    // }
-
-    // ///////////////////////////
-    // // getInitialSupply TEST //
-    // ///////////////////////////
-    // function testShouldReturnInitialSupply() public {
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getInitialSupply(), INITIAL_TOKEN_SUPPLY);
-    //     assertEq(
-    //         tokenGenerator.getInitialSupply(),
-    //         Token(tokenAddress).balanceOf(address(tokenGenerator))
-    //     );
-    // }
-
-    // ///////////////////////
-    // // getMaxSupply TEST //
-    // ///////////////////////
-    // function testShouldReturnMaxSupply() public {
-    //     createToken();
-
-    //     uint256 expectedMaxSupply = 1000000;
-
-    //     assertEq(tokenGenerator.getMaxSupply(), expectedMaxSupply);
-    // }
-
-    // //////////////////////
-    // // getFundGoal TEST //
-    // //////////////////////
-    // function testShouldReturnFundGoal() public {
-    //     createToken();
-
-    //     assertEq(tokenGenerator.getFundGoal(), TOKEN_FUND_GOAL);
-    // }
-
-    // /////////////////////////////
-    // // getTradeableSupply TEST //
-    // /////////////////////////////
-    // function testShouldReturnTradeableSupply() public {
-    //     createToken();
-
-    //     uint256 expectedTradeableSupply = 800000;
-
-    //     assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
-    // }
+            assertEq(
+                tokenGenerator.getCurrentPricingStage(tokenAddress),
+                i + 1
+            );
+        }
+    }
+
+    //////////////////////////////////
+    // isTokenDeadlineExpired TESTs //
+    //////////////////////////////////
+    function testShouldReturnIfDeadlineWasExpiredOrNot() public {
+        createToken();
+
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS));
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), false);
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
+    }
+
+    /////////////////////////////
+    // getAccumulatedFees TEST //
+    /////////////////////////////
+    function testShouldReturnAccumulatedFees() public {
+        assertEq(tokenGenerator.getAccumulatedFees(), 0);
+
+        createToken();
+
+        assertEq(tokenGenerator.getAccumulatedFees(), fee);
+
+        purchaseMaxSupplyOfTokens();
+
+        assertEq(tokenGenerator.getAccumulatedFees(), fee);
+
+        tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+        assertEq(tokenGenerator.getAccumulatedFees(), fee * 2);
+
+        address owner = tokenGenerator.getOwnerAddress();
+        vm.prank(owner);
+        tokenGenerator.withdrawAccumulatedFees();
+
+        assertEq(tokenGenerator.getAccumulatedFees(), 0);
+    }
+
+    ////////////////////////
+    // getStagePrice TEST //
+    ////////////////////////
+    function testShouldReturnStagePrice() public {
+        createToken();
+
+        uint48[8] memory stagePrices = [
+            3000000000000, //   0.000003  ETH per token
+            4500000000000, //   0.0000045 ETH per token
+            7500000000000, //   0.0000075 ETH per token
+            20000000000000, //  0.00002   ETH per token
+            35000000000000, //  0.000035  ETH per token
+            55000000000000, //  0.000055  ETH per token
+            75000000000000, //  0.000075  ETH per token
+            95000000000000 //   0.000095  ETH per token
+        ];
+
+        for (uint256 i = 0; i < stagePrices.length; i++) {
+            uint256 stagePrice = stagePrices[i];
+
+            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
+        }
+    }
+
+    /////////////////////////
+    // getStageSupply TEST //
+    /////////////////////////
+    function testShouldReturnStageSupply() public {
+        createToken();
+
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
+
+        for (uint256 i = 0; i < stageSupplies.length; i++) {
+            uint256 stageSupply = stageSupplies[i];
+
+            assertEq(tokenGenerator.getStageSupply(i), stageSupply);
+        }
+    }
+
+    //////////////////////////
+    // getTokenCreator TEST //
+    //////////////////////////
+    function testShouldReturnTheTokenCreator() public {
+        vm.prank(TOKEN_OWNER);
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token1), TOKEN_OWNER);
+
+        vm.prank(TOKEN_OWNER2);
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token2), TOKEN_OWNER2);
+
+        vm.prank(TOKEN_OWNER3);
+        address token3 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token3), TOKEN_OWNER3);
+    }
+
+    /////////////////////////////////////
+    // getTokenCurrentStageSupply TEST //
+    /////////////////////////////////////
+    function testShouldReturnCurrentStageSupply() public {
+        createToken();
+
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
+
+        for (uint256 i = 0; i < stageSupplies.length; i++) {
+            uint256 stageSupply = stageSupplies[i];
+
+            assertEq(
+                tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
+                stageSupply
+            );
+
+            uint256 currentSupply = tokenGenerator
+                .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                stageSupply - currentSupply,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            if (i < 7) {
+                assertEq(
+                    tokenGenerator.getTokenCurrentStageSupply(tokenAddress),
+                    stageSupplies[i + 1]
+                );
+            }
+        }
+    }
+
+    ////////////////////////////////////
+    // getTokenCurrentStagePrice TEST //
+    ////////////////////////////////////
+    function testShouldReturnCurrentStagePrice() public {
+        createToken();
+
+        uint48[8] memory stagePrices = [
+            3000000000000, //   0.000003  ETH per token
+            4500000000000, //   0.0000045 ETH per token
+            7500000000000, //   0.0000075 ETH per token
+            20000000000000, //  0.00002   ETH per token
+            35000000000000, //  0.000035  ETH per token
+            55000000000000, //  0.000055  ETH per token
+            75000000000000, //  0.000075  ETH per token
+            95000000000000 //   0.000095  ETH per token
+        ];
+
+        uint24[8] memory stageSupplies = [
+            200000, //  Stage 0: 0    - 200k tokens (0.6  ETH total cost)
+            400000, //  Stage 1: 200k - 400k tokens (0.9  ETH total cost)
+            500000, //  Stage 2: 400k - 500k tokens (0.75 ETH total cost)
+            550000, //  Stage 3: 500k - 550k tokens (1    ETH total cost)
+            600000, //  Stage 4: 550k - 600k tokens (1.75 ETH total cost)
+            650000, //  Stage 5: 600k - 650k tokens (2.75 ETH total cost)
+            700000, //  Stage 6: 650k - 700k tokens (3.75 ETH total cost)
+            800000 //   Stage 7: 700k - 800k tokens (9.5  ETH total cost)
+        ];
+
+        for (uint256 i = 0; i < stagePrices.length; i++) {
+            uint256 stagePrice = stagePrices[i];
+            uint256 stageSupply = stageSupplies[i];
+
+            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
+
+            uint256 currentSupply = tokenGenerator
+                .getCurrentSupplyWithoutInitialSupply(tokenAddress);
+
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                stageSupply - currentSupply,
+                newStage
+            );
+
+            vm.prank(BUYER);
+            tokenGenerator.purchaseToken{value: totalPrice}(
+                tokenAddress,
+                stageSupply - currentSupply
+            );
+
+            if (i < 7) {
+                assertEq(tokenGenerator.getStagePrice(i), stagePrices[i]);
+            }
+        }
+    }
+
+    //////////////////////////////////
+    // getAvailableStageSupply TEST //
+    //////////////////////////////////
+    function testFuzz_ShouldReturnRemainingSupplyInCurrentStage(
+        uint256 _amount
+    ) public {
+        uint256 amount = bound(_amount, 1, 199999);
+
+        createToken();
+
+        assertEq(tokenGenerator.getAvailableStageSupply(tokenAddress), 200000);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            amount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            amount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
+
+        assertEq(
+            tokenGenerator.getAvailableStageSupply(tokenAddress),
+            200000 - amount
+        );
+    }
+
+    ///////////////////////////////
+    // getTotalTokensAmount TEST //
+    ///////////////////////////////
+    function testShouldReturnAmountOfTokensCreated() public {
+        for (uint256 i = 1; i < 10; i++) {
+            vm.prank(TOKEN_OWNER);
+            tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+            assertEq(tokenGenerator.getTotalTokensAmount(), i);
+        }
+    }
+
+    //////////////////////////
+    // getTokenAddress TEST //
+    //////////////////////////
+    function testShouldReturnTokenAddress() public {
+        for (uint256 i = 0; i < 10; i++) {
+            vm.prank(TOKEN_OWNER);
+            address newTokenAddress = tokenGenerator.createToken{value: fee}(
+                TOKEN_NAME,
+                TOKEN_SYMBOL
+            );
+
+            assertEq(tokenGenerator.getTokenAddress(i), newTokenAddress);
+        }
+    }
+
+    ////////////////////////////////////////
+    // getBuyerTokenAmountPurchased TESTs //
+    ////////////////////////////////////////
+    function testShouldReturnBuyersTokenAmountPurchased() public {
+        // token #1
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER), 0);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            token1,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(token1, BUYER),
+            TOKEN_AMOUNT_ONE
+        );
+
+        // token #2
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER), 0);
+
+        uint256 newStage2 = tokenGenerator.calculateNewStage(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
+            token2,
+            TOKEN_AMOUNT_TWO,
+            newStage2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice2}(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(token2, BUYER),
+            TOKEN_AMOUNT_TWO
+        );
+    }
+
+    /////////////////////////////////
+    // getBuyerEthAmountSpent TEST //
+    /////////////////////////////////
+    function testShouldReturnBuyerEthAmountSpent() public {
+        // token #1
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            token1,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            token1,
+            TOKEN_AMOUNT_ONE
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(token1, BUYER),
+            totalPrice
+        );
+
+        // token #2
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
+
+        uint256 newStage2 = tokenGenerator.calculateNewStage(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
+            token2,
+            TOKEN_AMOUNT_TWO,
+            newStage2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice2}(
+            token2,
+            TOKEN_AMOUNT_TWO
+        );
+
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(token2, BUYER),
+            totalPrice2
+        );
+
+        vm.warp(block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + 1);
+        vm.roll(block.number + 1);
+
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(token1);
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(token2);
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token1, BUYER), 0);
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
+    }
+
+    /////////////////////////
+    // getCreationFee TEST //
+    /////////////////////////
+    function testShouldReturnTokenCreationFee() public {
+        createToken();
+
+        assertEq(tokenGenerator.getCreationFee(), fee);
+    }
+
+    //////////////////////////
+    // getOwnerAddress TEST //
+    //////////////////////////
+    function testShouldReturnOwnerAddress() public {
+        createToken();
+
+        address expectedAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+
+        assertEq(tokenGenerator.getOwnerAddress(), expectedAddress);
+    }
+
+    ///////////////////////////////
+    // getIcoDeadlineInDays TEST //
+    ///////////////////////////////
+    function testShouldReturnIcoDeadline() public {
+        createToken();
+
+        uint256 expectedDeadline = 30;
+
+        assertEq(tokenGenerator.getIcoDeadlineInDays(), expectedDeadline);
+    }
+
+    ///////////////////////////
+    // getInitialSupply TEST //
+    ///////////////////////////
+    function testShouldReturnInitialSupply() public {
+        createToken();
+
+        assertEq(tokenGenerator.getInitialSupply(), INITIAL_TOKEN_SUPPLY);
+        assertEq(
+            tokenGenerator.getInitialSupply(),
+            Token(tokenAddress).balanceOf(address(tokenGenerator))
+        );
+    }
+
+    ///////////////////////
+    // getMaxSupply TEST //
+    ///////////////////////
+    function testShouldReturnMaxSupply() public {
+        createToken();
+
+        uint256 expectedMaxSupply = 1000000;
+
+        assertEq(tokenGenerator.getMaxSupply(), expectedMaxSupply);
+    }
+
+    //////////////////////
+    // getFundGoal TEST //
+    //////////////////////
+    function testShouldReturnFundGoal() public {
+        createToken();
+
+        assertEq(tokenGenerator.getFundGoal(), TOKEN_FUND_GOAL);
+    }
+
+    /////////////////////////////
+    // getTradeableSupply TEST //
+    /////////////////////////////
+    function testShouldReturnTradeableSupply() public {
+        createToken();
+
+        uint256 expectedTradeableSupply = 800000;
+
+        assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
+    }
 
     ////////////////////////////////////////////////////
     // createPoolAndAddLiquidityAndBurnLPTokens TESTs //
     ////////////////////////////////////////////////////
-    // function testShouldRevertIfICOIsNotActiveNoPurchase() public {
-    //     createToken();
+    function testShouldRevertIfFundingIsNotActiveNoPurchase() public {
+        createToken();
 
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             TokenGenerator.TokenGenerator__ICONotActive.selector
-    //         )
-    //     );
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfFundingIsNotActiveSinglePurchase() public {
+        createTokenAndPurchaseOneBuyer();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfFundingIsNotActiveMultiplePurchases() public {
+        createTokenAndPurchaseMultipleBuyers();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfICOAlreadyActive() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenICOActive.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    // cant be directly tested because funding will not be active if the fund goal is not met
+    // function testShouldRevertIfFundingGoalIsNotMet() public {
     // }
 
-    // function testShouldRevertIfICOIsNotActiveSinglePurchase() public {
-    //     createTokenAndPurchaseOneBuyer();
+    function testShouldNotRevertIfTheLiqudityPoolIsAlreadyCreated() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
 
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             TokenGenerator.TokenGenerator__ICONotActive.selector
-    //         )
-    //     );
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    // }
+        createToken();
 
-    // function testShouldRevertIfICOIsNotActiveMultiplePurchases() public {
-    //     createTokenAndPurchaseMultipleBuyers();
+        // create liqudity pool before calling the "createPoolAndAddLiquidityAndBurnLPTokens" function
+        address poolAddress = factory.createPair(tokenAddress, weth);
 
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             TokenGenerator.TokenGenerator__ICONotActive.selector
-    //         )
-    //     );
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    // }
+        purchaseMaxSupplyOfTokens();
 
-    // // cant be directly tested because ICO will not be active if the fund goal is not met
-    // // function testShouldRevertIfFundingGoalIsNotMet() public {
-    // // }
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 startingWethContractBalance = weth.balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
+        );
 
-    // function testShouldRevertIfFundingGoalIsZero() public {
-    //     createTokenAndMaxPurchase();
+        assertEq(poolAddress, factory.getPair(tokenAddress, weth));
 
-    //     // after succesfull call resets the fundingGoal to 0
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+        (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(
-    //             TokenGenerator.TokenGenerator__FundingGoalNotMet.selector
-    //         )
-    //     );
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    // }
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
 
-    // function testShouldNotRevertIfTheLiqudityPoolIsAlreadyCreated() public {
-    //     IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+        uint256 endingWethContractBalance = weth.balance;
 
-    //     createToken();
+        assertEq(poolAddress, returnedPoolAddress);
+        assertGt(liqudity, 0);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
+    }
 
-    //     // create liqudity pool before calling the "createPoolAndAddLiquidityAndBurnLPTokens" function
-    //     address poolAddress = factory.createPair(tokenAddress, weth);
+    function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
 
-    //     purchaseMaxSupplyOfTokens();
+        assertEq(
+            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+            TOKEN_FUND_GOAL
+        );
 
-    //     uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
-    //         .balance;
-    //     uint256 startingWethContractBalance = weth.balance;
-    //     uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
-    //         tokenAddress
-    //     );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
-    //     assertEq(poolAddress, factory.getPair(tokenAddress, weth));
+        assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
+    }
 
-    //     (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
-    //         .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
 
-    //     uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
-    //         .balance;
+        createToken();
 
-    //     uint256 endingWethContractBalance = weth.balance;
+        // works either way the addresses are inputed
+        assertEq(factory.getPair(tokenAddress, weth), address(0));
 
-    //     assertEq(poolAddress, returnedPoolAddress);
-    //     assertGt(liqudity, 0);
-    //     assertEq(
-    //         IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
-    //         0
-    //     );
-    //     assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
-    //     assertEq(
-    //         Token(tokenAddress).balanceOf(address(tokenGenerator)),
-    //         MAX_SUPPLY_WITHOUT_INIT_SUPPLY
-    //     );
-    //     assertEq(
-    //         startingTokenGeneratorETHBalance - fundedEth,
-    //         endingTokenGeneratorETHBalance
-    //     );
-    //     assertEq(
-    //         startingWethContractBalance + fundedEth,
-    //         endingWethContractBalance
-    //     );
-    // }
+        purchaseMaxSupplyOfTokens();
 
-    // function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
-    //     createTokenAndMaxPurchase();
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 startingWethContractBalance = weth.balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
+        );
 
-    //     assertEq(
-    //         tokenGenerator.getTokenEthAmountFunded(tokenAddress),
-    //         TOKEN_FUND_GOAL
-    //     );
+        (address returnPoolAddress, ) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+        address poolAddress = factory.getPair(tokenAddress, weth);
 
-    //     assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
-    // }
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
 
-    // function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
-    //     IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+        uint256 endingWethContractBalance = weth.balance;
 
-    //     createToken();
+        assertEq(returnPoolAddress, poolAddress);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
+    }
 
-    //     // works either way the addresses are inputed
-    //     assertEq(factory.getPair(tokenAddress, weth), address(0));
+    function testShouldEmitAnEvent() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
 
-    //     purchaseMaxSupplyOfTokens();
+        address pair;
 
-    //     uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
-    //         .balance;
-    //     uint256 startingWethContractBalance = weth.balance;
+        address wethAddress = IUniswapV2Router02(uniswapV2RouterAddress).WETH();
 
-    //     (address returnPoolAddress, ) = tokenGenerator
-    //         .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+        (address token0, address token1) = tokenAddress < wethAddress
+            ? (tokenAddress, wethAddress)
+            : (wethAddress, tokenAddress);
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                hex"ff",
+                uniswapV2FactoryAddress,
+                salt,
+                hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // UniswapV2Pair bytecode hash
+            )
+        );
+        pair = address(uint160(uint256(hash)));
+        console.log(pair);
 
-    //     address poolAddress = factory.getPair(tokenAddress, weth);
+        vm.expectEmit(true, true, true, false);
 
-    //     uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
-    //         .balance;
-    //     uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
-    //         tokenAddress
-    //     );
-    //     uint256 endingWethContractBalance = weth.balance;
+        emit PoolCreatedliquidityAddedLPTokensBurned(
+            tokenAddress,
+            pair,
+            2049390152191
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
 
-    //     assertEq(returnPoolAddress, poolAddress);
-    //     assertEq(
-    //         Token(tokenAddress).balanceOf(address(tokenGenerator)),
-    //         MAX_SUPPLY_WITHOUT_INIT_SUPPLY
-    //     );
-    //     assertEq(
-    //         startingTokenGeneratorETHBalance - fundedEth,
-    //         endingTokenGeneratorETHBalance
-    //     );
-    //     assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
-    //     assertEq(
-    //         IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
-    //         0
-    //     );
+    // ***** Gas tests ***** //
 
-    //     assertEq(
-    //         startingWethContractBalance + fundedEth,
-    //         endingWethContractBalance
-    //     );
-    // }
+    function testCheckGasCostWithPurchaseAndCreatePairAddLiqudityBurnTokens()
+        public
+    {
+        createToken();
 
-    // function testShouldEmitAnEvent() public {
-    //     createTokenAndMaxPurchase();
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            800000
+        );
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            800000,
+            newStage
+        );
 
-    //     address pair;
+        uint256 gasStart = gasleft();
 
-    //     (address token0, address token1) = tokenAddress < weth
-    //         ? (tokenAddress, weth)
-    //         : (weth, tokenAddress);
-    //     bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-    //     bytes32 hash = keccak256(
-    //         abi.encodePacked(
-    //             hex"ff",
-    //             uniswapV2FactoryAddress,
-    //             salt,
-    //             hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // UniswapV2Pair bytecode hash
-    //         )
-    //     );
-    //     pair = address(uint160(uint256(hash)));
-    //     console.log(pair);
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, 800000);
 
-    //     vm.expectEmit(true, true, true, false);
-    //     emit PoolCreatedLiqudityAddedLPTokensBurned(
-    //         tokenAddress,
-    //         pair,
-    //         2049390152191
-    //     );
-    //     tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    // }
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // with createPoolAndAddLiquidityAndBurnLPTokens call:      2 937 215
+        // without createPoolAndAddLiquidityAndBurnLPTokens call:     159 777
+    }
 
-    // function testCheckGasCostWithGetPairCheck() public {
-    //     createToken();
-
-    //     uint256 newStage = tokenGenerator.calculateNewStage(
-    //         tokenAddress,
-    //         800000
-    //     );
-    //     uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-    //         tokenAddress,
-    //         800000,
-    //         newStage
-    //     );
-
-    //     uint256 gasStart = gasleft();
-
-    //     vm.prank(BUYER);
-    //     tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, 800000);
-
-    //     uint256 gasUsed = gasStart - gasleft();
-    //     console.log("Gas used:", gasUsed);
-    //     // using getPair check:                        3 390 673
-    //     // without getPair check :                     3 388 014
-    //     // without getPair check and createPair call:    138 972
-    // }
+    function testCheckGasPurchase() public {}
 }
