@@ -262,6 +262,14 @@ contract TestTokenGenerator is StdCheats, Test {
     {
         assertEq(tokenGenerator.getCreationFee(), fee);
         assertEq(tokenGenerator.getIcoDeadlineInDays(), icoDeadlineInDays);
+        assertEq(
+            tokenGenerator.getUniswapV2FactoryAddress(),
+            uniswapV2FactoryAddress
+        );
+        assertEq(
+            tokenGenerator.getUniswapV2RouterAddress(),
+            uniswapV2RouterAddress
+        );
     }
 
     ///////////////////////
@@ -270,6 +278,7 @@ contract TestTokenGenerator is StdCheats, Test {
     function testFuzz_ShouldRevertIfValueSentIsLessThanFee(
         uint256 _amount
     ) public {
+        // amount is always less then min. fee
         uint256 amount = bound(_amount, 0, fee - 1);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -280,12 +289,21 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createToken{value: amount}(TOKEN_NAME, TOKEN_SYMBOL);
     }
 
+    function testFuzz_ShouldNotRevertIfValueSentIsMoreThanFee(
+        uint256 _amount
+    ) public {
+        // amount is always more then min. fee
+        vm.prank(TOKEN_OWNER);
+        uint256 amount = bound(_amount, fee, TOKEN_OWNER.balance);
+
+        tokenGenerator.createToken{value: amount}(TOKEN_NAME, TOKEN_SYMBOL);
+    }
+
     function testShouldCreateNewTokenContractSingleToken() public {
+        // create new token
         vm.prank(TOKEN_OWNER);
         tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
-
         address newTokenAddress = tokenGenerator.getTokenAddress(0);
-
         string memory tokenName = Token(newTokenAddress).name();
         string memory tokenSymbol = Token(newTokenAddress).symbol();
         uint256 tokenSupply = Token(newTokenAddress).totalSupply();
@@ -297,6 +315,7 @@ contract TestTokenGenerator is StdCheats, Test {
             address(newTokenAddress)
         );
 
+        // verify if data is correct
         assertEq(tokenName, TOKEN_NAME);
         assertEq(tokenSymbol, TOKEN_SYMBOL);
         assertEq(tokenSupply, tokenGenerator.getInitialSupply());
@@ -440,7 +459,6 @@ contract TestTokenGenerator is StdCheats, Test {
     }
 
     function testShouldUpdateTheAccumulatedFeesAndContractBalance() public {
-        // Define test data arrays
         address[3] memory owners = [TOKEN_OWNER, TOKEN_OWNER2, TOKEN_OWNER3];
         string[3] memory names = [TOKEN_NAME, TOKEN_NAME2, TOKEN_NAME3];
         string[3] memory symbols = [TOKEN_SYMBOL, TOKEN_SYMBOL2, TOKEN_SYMBOL3];
@@ -470,6 +488,7 @@ contract TestTokenGenerator is StdCheats, Test {
             );
             vm.skip(true);
         }
+
         vm.prank(TOKEN_OWNER);
         vm.expectEmit(true, true, true, false);
         emit TokenCreated(
@@ -480,9 +499,51 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
     }
 
+    function testShouldReturnCorrectTokenAddress() public {
+        address[3] memory owners = [TOKEN_OWNER, TOKEN_OWNER2, TOKEN_OWNER3];
+        string[3] memory names = [TOKEN_NAME, TOKEN_NAME2, TOKEN_NAME3];
+        string[3] memory symbols = [TOKEN_SYMBOL, TOKEN_SYMBOL2, TOKEN_SYMBOL3];
+        address[] memory tokenAddresses = new address[](3);
+
+        for (uint i = 0; i < 3; i++) {
+            vm.prank(owners[i]);
+            tokenAddresses[i] = tokenGenerator.createToken{value: fee}(
+                names[i],
+                symbols[i]
+            );
+            assertEq(tokenAddresses[i], tokenGenerator.getTokenAddress(i));
+        }
+    }
+
     /////////////////////////
     // purchaseToken TESTs //
     /////////////////////////
+    function testShouldRevertIfTokendAddressIsZeroAddress() public {
+        // using helper function to create new token
+        createToken();
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ZeroAddressNotAllowed.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            address(0),
+            TOKEN_AMOUNT_ONE
+        );
+    }
+
     function testFuzz_ShouldRevertIfPurchaseAmountExceedsMaxSupply(
         uint256 _amount
     ) public {
@@ -527,6 +588,9 @@ contract TestTokenGenerator is StdCheats, Test {
         uint256 amount1 = bound(_amount1, 1, 220005);
         uint256 amount2 = bound(_amount2, 1, 350003);
         uint256 amount3 = 800000 - (amount1 + amount2);
+        // buying amount3 hits the max supply
+
+        // buying amount4 exceeds the max supply
         uint256 amount4 = bound(_amount4, 1, 800000);
 
         createToken();
@@ -560,44 +624,25 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.purchaseToken{value: 10 ether}(tokenAddress, amount4);
     }
 
-    function testShouldRevertIfAddressIsZeroAddress() public {
-        createToken();
-
-        uint256 newStage = tokenGenerator.calculateNewStage(
-            tokenAddress,
-            TOKEN_AMOUNT_ONE
-        );
-        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-            tokenAddress,
-            TOKEN_AMOUNT_ONE,
-            newStage
-        );
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__ZeroAddressNotAllowed.selector
-            )
-        );
-        vm.prank(BUYER);
-        tokenGenerator.purchaseToken{value: totalPrice}(
-            address(0),
-            TOKEN_AMOUNT_ONE
-        );
-    }
-
     function testShouldRevertIfTokenAddressIsNotValid() public {
         createToken();
 
-        address[4] memory addresses = [BUYER, BUYER2, BUYER3, BUYER4];
+        // Buyers addresses
+        address[4] memory invalidTokenAddresses = [
+            BUYER,
+            BUYER2,
+            BUYER3,
+            BUYER4
+        ];
 
-        for (uint256 i; i < addresses.length; i++) {
+        for (uint256 i; i < invalidTokenAddresses.length; i++) {
             vm.expectRevert(
                 abi.encodeWithSelector(
                     TokenGenerator.TokenGenerator__InvalidTokenAddress.selector
                 )
             );
             tokenGenerator.purchaseToken{value: 1 ether}(
-                addresses[i],
+                invalidTokenAddresses[i],
                 TOKEN_AMOUNT_ONE
             );
         }
@@ -619,6 +664,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         createToken();
 
+        // increase the block.timestamp so the deadline expires
         vm.warp(
             block.timestamp + (icoDeadlineInDays * ONE_DAY_IN_SECONDS) + amount
         );
@@ -638,6 +684,7 @@ contract TestTokenGenerator is StdCheats, Test {
     function testFuzz_ShouldNotRevertIfDeadlineIsNotReached(
         uint256 _amount
     ) public {
+        // block.timestamp will always be less the the min. deadline
         uint256 amount = bound(_amount, 1, icoDeadlineInDays * 86400);
 
         createToken();
@@ -665,8 +712,42 @@ contract TestTokenGenerator is StdCheats, Test {
             newStage
         );
 
+        // sent value will be always less than calculated value
         uint256 amount = bound(_amount, 1, totalCost - 1);
 
+        vm.prank(BUYER);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__InsufficientPayment.selector,
+                totalCost
+            )
+        );
+        tokenGenerator.purchaseToken{value: amount}(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+    }
+
+    function testFuzz_ShouldRevertIfETHValueSentIsHigher(
+        uint256 _amount
+    ) public {
+        createToken();
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE
+        );
+
+        uint256 totalCost = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            TOKEN_AMOUNT_ONE,
+            newStage
+        );
+
+        // sent value will be always higher than calculated value
+        uint256 amount = bound(_amount, totalCost + 1, BUYER.balance);
+
+        vm.prank(BUYER);
         vm.expectRevert(
             abi.encodeWithSelector(
                 TokenGenerator.TokenGenerator__InsufficientPayment.selector,
@@ -693,76 +774,72 @@ contract TestTokenGenerator is StdCheats, Test {
             newStage
         );
 
-        uint256 startingTokenStage = tokenGenerator.getCurrentPricingStage(
-            tokenAddress
-        );
-        // check if starting stage is 0
-        assertEq(startingTokenStage, 0);
-
+        // check starting token data
         uint256 startingTokenSupply = tokenGenerator
             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-        // check the token balance of TokenGenerator contract is only the initial supply
+
+        assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), 0);
+        assertEq(startingTokenSupply, 0);
+        assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
+
         assertEq(
             Token(tokenAddress).balanceOf(address(tokenGenerator)),
-            tokenGenerator.getInitialSupply()
+            INITIAL_TOKEN_SUPPLY
         );
+
+        // check starting buyer data
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(tokenAddress, BUYER),
+            0
+        );
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER), 0);
 
         uint256 startingEthBalance = address(tokenGenerator).balance;
 
         // purchase
+        console.log("------------------- PURCHASE -------------------");
         vm.prank(BUYER);
         tokenGenerator.purchaseToken{value: totalCost}(
             tokenAddress,
             TOKEN_AMOUNT_FOUR
         );
 
+        // check token ending data
         uint256 endingTokenSupply = tokenGenerator
             .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-        // check if the balance of TokenGenerator contract is updated
+
+        assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), newStage);
         assertEq(endingTokenSupply, startingTokenSupply + TOKEN_AMOUNT_FOUR);
         assertEq(
+            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+            totalCost
+        );
+
+        assertEq(
             Token(tokenAddress).balanceOf(address(tokenGenerator)),
-            tokenGenerator.getInitialSupply() +
-                startingTokenSupply +
-                TOKEN_AMOUNT_FOUR
+            INITIAL_TOKEN_SUPPLY + TOKEN_AMOUNT_FOUR
         );
 
+        // check buyer ending data
         uint256 endingEthBalance = address(tokenGenerator).balance;
-        // check if the ETH balance updated
+
+        assertEq(
+            tokenGenerator.getBuyerTokenAmountPurchased(tokenAddress, BUYER),
+            TOKEN_AMOUNT_FOUR
+        );
+        assertEq(
+            tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER),
+            totalCost
+        );
+
         assertEq(endingEthBalance, startingEthBalance + totalCost);
-
-        uint256 endingTokenStage = tokenGenerator.getCurrentPricingStage(
-            tokenAddress
-        );
-        // check if the stage is updated to newStage
-        assertEq(endingTokenStage, newStage);
-
-        uint256 buyerTokenAmountPurchased = tokenGenerator
-            .getBuyerTokenAmountPurchased(tokenAddress, BUYER);
-        // check if the buyers token amount is updated
-        assertEq(buyerTokenAmountPurchased, TOKEN_AMOUNT_FOUR);
-
-        uint256 buyerEthAmountSpent = tokenGenerator.getBuyerEthAmountSpent(
-            tokenAddress,
-            BUYER
-        );
-        // check if the buyers eth amount spent is updated
-        assertEq(buyerEthAmountSpent, totalCost);
     }
 
-    function testShouldUpdateokenAndBuyerDataAfterMultiplePurchases(
-        uint256 _amount1,
-        uint256 _amount2,
-        uint256 _amount3
-    ) public {
-        uint256 amount1 = bound(_amount1, 1, 120005);
-        uint256 amount2 = bound(_amount2, 1, 220003);
-        uint256 amount3 = bound(_amount3, 1, 434003);
-
+    function testShouldUpdateTokenAndBuyerDataAfterMultiplePurchases() public {
         createToken();
 
         address[3] memory buyers = [BUYER, BUYER2, BUYER3];
-        uint256[3] memory amounts = [amount1, amount2, amount3];
+        uint24[3] memory amounts = [120005, 220003, 434003];
 
         for (uint256 i; i < buyers.length; i++) {
             uint256 newStage = tokenGenerator.calculateNewStage(
@@ -782,44 +859,46 @@ contract TestTokenGenerator is StdCheats, Test {
             uint256 startingEthBalance = address(tokenGenerator).balance;
 
             // purchase
+            console.log("------------------- PURCHASE -------------------");
             vm.prank(buyers[i]);
             tokenGenerator.purchaseToken{value: totalCost}(
                 tokenAddress,
                 amounts[i]
             );
 
+            // check token data
+            assertEq(
+                tokenGenerator.getCurrentPricingStage(tokenAddress),
+                newStage
+            );
             uint256 endingTokenSupply = tokenGenerator
                 .getCurrentSupplyWithoutInitialSupply(tokenAddress);
-            // check if the balance of TokenGenerator contract is updated
             assertEq(endingTokenSupply, startingTokenSupply + amounts[i]);
             assertEq(
-                Token(tokenAddress).balanceOf(address(tokenGenerator)),
-                tokenGenerator.getInitialSupply() +
-                    startingTokenSupply +
-                    amounts[i]
+                tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+                amounts[i]
             );
 
+            // check if the balances of TokenGenerator contract are updated
+            assertEq(
+                Token(tokenAddress).balanceOf(address(tokenGenerator)),
+                INITIAL_TOKEN_SUPPLY + startingTokenSupply + amounts[i]
+            );
             uint256 endingEthBalance = address(tokenGenerator).balance;
-            // check if the ETH balance updated
             assertEq(endingEthBalance, startingEthBalance + totalCost);
 
-            uint256 endingTokenStage = tokenGenerator.getCurrentPricingStage(
-                tokenAddress
+            // check buyer data
+            assertEq(
+                tokenGenerator.getBuyerTokenAmountPurchased(
+                    tokenAddress,
+                    buyers[i]
+                ),
+                amounts[i]
             );
-            // check if the stage is updated to newStage
-            assertEq(endingTokenStage, newStage);
-
-            uint256 buyerTokenAmountPurchased = tokenGenerator
-                .getBuyerTokenAmountPurchased(tokenAddress, buyers[i]);
-            // check if the buyers token amount is updated
-            assertEq(buyerTokenAmountPurchased, amounts[i]);
-
-            uint256 buyerEthAmountSpent = tokenGenerator.getBuyerEthAmountSpent(
-                tokenAddress,
-                buyers[i]
+            assertEq(
+                tokenGenerator.getBuyerEthAmountSpent(tokenAddress, buyers[i]),
+                totalCost
             );
-            // check if the buyers eth amount spent is updated
-            assertEq(buyerEthAmountSpent, totalCost);
         }
     }
 
