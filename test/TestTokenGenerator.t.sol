@@ -272,6 +272,53 @@ contract TestTokenGenerator is StdCheats, Test {
         );
     }
 
+    ///////////////////
+    // receive TESTs //
+    ///////////////////
+    function testFuzz_ShouldRevertIfETHIsSentToContract(
+        uint256 _amount
+    ) public {
+        uint256 amount = bound(_amount, 1, BUYER.balance);
+
+        uint256 startingBalance = address(tokenGenerator).balance;
+
+        vm.prank(BUYER);
+        vm.expectRevert("ETH not accepted");
+        (bool success, ) = address(tokenGenerator).call{value: amount}("");
+        require(success, "Call failed");
+
+        uint256 endingBalance = address(tokenGenerator).balance;
+
+        assertEq(startingBalance, endingBalance);
+    }
+
+    ////////////////////
+    // fallback TESTs //
+    ////////////////////
+    function testShouldRevertIfInvalidFunctionIsCalled() public {
+        vm.expectRevert();
+        (bool success, ) = address(tokenGenerator).call(
+            abi.encodeWithSignature("nonExistentFunction()")
+        );
+
+        console.log(success);
+    }
+
+    function testShouldRevertIfInvalidFunctionIsCalledAndETHSent() public {
+        uint256 startingBalance = address(tokenGenerator).balance;
+
+        vm.expectRevert();
+        (bool success, ) = address(tokenGenerator).call{value: 1 ether}(
+            abi.encodeWithSignature("nonExistentFunction()")
+        );
+
+        console.log(success);
+
+        uint256 endingBalance = address(tokenGenerator).balance;
+
+        assertEq(startingBalance, endingBalance);
+    }
+
     ///////////////////////
     // createToken TESTs //
     ///////////////////////
@@ -484,7 +531,7 @@ contract TestTokenGenerator is StdCheats, Test {
     function testShouldEmitEventAfterCreatingToken() public {
         if (isMainnetFork()) {
             console.log(
-                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
             );
             vm.skip(true);
         }
@@ -841,6 +888,8 @@ contract TestTokenGenerator is StdCheats, Test {
         address[3] memory buyers = [BUYER, BUYER2, BUYER3];
         uint24[3] memory amounts = [120005, 220003, 434003];
 
+        uint256 ethAmountFunded;
+
         for (uint256 i; i < buyers.length; i++) {
             uint256 newStage = tokenGenerator.calculateNewStage(
                 tokenAddress,
@@ -866,6 +915,8 @@ contract TestTokenGenerator is StdCheats, Test {
                 amounts[i]
             );
 
+            ethAmountFunded += totalCost;
+
             // check token data
             assertEq(
                 tokenGenerator.getCurrentPricingStage(tokenAddress),
@@ -876,7 +927,7 @@ contract TestTokenGenerator is StdCheats, Test {
             assertEq(endingTokenSupply, startingTokenSupply + amounts[i]);
             assertEq(
                 tokenGenerator.getTokenEthAmountFunded(tokenAddress),
-                amounts[i]
+                ethAmountFunded
             );
 
             // check if the balances of TokenGenerator contract are updated
@@ -902,7 +953,7 @@ contract TestTokenGenerator is StdCheats, Test {
         }
     }
 
-    function testShouldChangeTheFundingActiveStatusToTrueAfterMaxSupplyReached()
+    function testShouldChangeTheFundingActiveStatusToTrueAfterMaxSupplyReachedSinglePurchase()
         public
     {
         createToken();
@@ -912,6 +963,54 @@ contract TestTokenGenerator is StdCheats, Test {
         purchaseMaxSupplyOfTokens();
 
         assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), true);
+    }
+
+    function testShouldChangeTheFundingActiveStatusToTrueAfterMaxSupplyReachedMultiplePurchases()
+        public
+    {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), false);
+
+        address[4] memory buyers = [BUYER, BUYER2, BUYER3, BUYER4];
+        uint24[4] memory amounts = [200000, 300000, 100000, 200000];
+
+        for (uint256 i; i < buyers.length; i++) {
+            uint256 newStage = tokenGenerator.calculateNewStage(
+                tokenAddress,
+                amounts[i]
+            );
+
+            uint256 totalCost = tokenGenerator.calculatePurchaseCost(
+                tokenAddress,
+                amounts[i],
+                newStage
+            );
+
+            // purchase
+            console.log("------------------- PURCHASE -------------------", i);
+            vm.prank(buyers[i]);
+            tokenGenerator.purchaseToken{value: totalCost}(
+                tokenAddress,
+                amounts[i]
+            );
+
+            if (
+                tokenGenerator.getCurrentSupplyWithoutInitialSupply(
+                    tokenAddress
+                ) != MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+            ) {
+                assertEq(
+                    tokenGenerator.getTokenFundingComplete(tokenAddress),
+                    false
+                );
+            } else {
+                assertEq(
+                    tokenGenerator.getTokenFundingComplete(tokenAddress),
+                    true
+                );
+            }
+        }
     }
 
     function testShouldMintTokensAndSendEthToTokenGeneratorContractSinglePurchase()
@@ -993,6 +1092,7 @@ contract TestTokenGenerator is StdCheats, Test {
             assertEq(endingEthBalance, startingEthBalance + totalPrice);
             assertEq(endingTokenBalance, startingTokenBalance + amounts[i]);
 
+            // Token contract should have 0 tokens and 0 ETH
             assertEq(address(tokenAddress).balance, 0);
             assertEq(Token(tokenAddress).balanceOf(tokenAddress), 0);
         }
@@ -1013,7 +1113,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         vm.prank(BUYER);
         vm.expectEmit(true, true, true, true);
-        // ICO should not be active (returns false)
+        // funding should not be active (returns false)
         emit TokenPurchase(
             tokenAddress,
             TOKEN_AMOUNT_ONE,
@@ -1044,7 +1144,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         vm.prank(BUYER);
         vm.expectEmit(true, true, true, true);
-        // ICO should be active (returns true)
+        // funding should be active (returns true)
         emit TokenPurchase(
             tokenAddress,
             maxTokenAmount,
@@ -1147,12 +1247,16 @@ contract TestTokenGenerator is StdCheats, Test {
                 (stageSupply[stage] - currentTokenSupply) * stagePrice[stage]
             );
         }
+
+        // check if total price reaches the fund goal
         assertEq(totalPriceAccumulated, TOKEN_FUND_GOAL);
     }
 
-    function testShouldExactStagePriceForTokensPlusOne() public {
+    function testShouldCalculatePriceForTokensPlusOne() public {
         createToken();
 
+        // TOKEN_AMOUNT_THREE = 200000 which is stage 0
+        // 200000 + 1 is exactly the beggining of next stage 1
         uint256 amount = TOKEN_AMOUNT_THREE + 1;
 
         uint256 newStage = tokenGenerator.calculateNewStage(
@@ -1184,6 +1288,7 @@ contract TestTokenGenerator is StdCheats, Test {
     {
         createToken();
 
+        // spanning to stage 3
         uint256 amount = 525000;
 
         uint256 newStage = tokenGenerator.calculateNewStage(
@@ -1199,24 +1304,25 @@ contract TestTokenGenerator is StdCheats, Test {
         vm.prank(BUYER);
         tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
 
-        uint256 stagePrice1 = 200000 * 3000000000000;
-        console.log("Stage price1:", stagePrice1);
-        uint256 stagePrice2 = 200000 * 4500000000000;
-        console.log("Stage price2:", stagePrice2);
-        uint256 stagePrice3 = 100000 * 7500000000000;
-        console.log("Stage price3:", stagePrice3);
-        uint256 stagePrice4 = 25000 * 20000000000000;
-        console.log("Stage price4:", stagePrice4);
+        uint256 stagePrice0 = 200000 * 3000000000000;
+        console.log("Stage price1:", stagePrice0);
+        uint256 stagePrice1 = 200000 * 4500000000000;
+        console.log("Stage price2:", stagePrice1);
+        uint256 stagePrice2 = 100000 * 7500000000000;
+        console.log("Stage price3:", stagePrice2);
+        uint256 stagePrice3 = 25000 * 20000000000000;
+        console.log("Stage price4:", stagePrice3);
 
         assertEq(
             totalPrice,
-            stagePrice1 + stagePrice2 + stagePrice3 + stagePrice4
+            stagePrice0 + stagePrice1 + stagePrice2 + stagePrice3
         );
     }
 
     function testShouldCalculateTotalPriceWithinTheSameStagePurchase() public {
         createToken();
 
+        // sum of this tokens is still in the same stage 0
         uint16[4] memory amounts = [35000, 44000, 62000, 5000];
 
         for (uint256 i = 0; i < 4; i++) {
@@ -1236,7 +1342,7 @@ contract TestTokenGenerator is StdCheats, Test {
                 amounts[i]
             );
 
-            // calculating directly from array sometimes causes overflow/underflow error
+            // directly using array in assert sometimes causes overflow/underflow inside of test calculation
             uint256 amount = amounts[i];
             assertEq(totalPrice, 3000000000000 * amount);
         }
@@ -1293,7 +1399,7 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(cost2, cost3);
     }
 
-    function testShouldEndUpWithFundGoalOfEthIfMaxSupplyReached(
+    function testFuzz_ShouldEndUpWithFundGoalOfEthIfMaxSupplyReached(
         uint256 _amount1,
         uint256 _amount2,
         uint256 _amount3
@@ -1332,30 +1438,6 @@ contract TestTokenGenerator is StdCheats, Test {
         }
 
         assertEq(totalPriceAccumulated, TOKEN_FUND_GOAL);
-    }
-
-    function testGascalculatePurchaseCost() public {
-        createToken();
-
-        uint256 tokenAmount = 148987;
-
-        uint256 newStage = tokenGenerator.calculateNewStage(
-            tokenAddress,
-            tokenAmount
-        );
-
-        uint256 gasStart = gasleft();
-        tokenGenerator.calculatePurchaseCost(
-            tokenAddress,
-            tokenAmount,
-            newStage
-        );
-        uint256 gasUsed = gasStart - gasleft();
-        console.log("Gas used:", gasUsed);
-        // 8462 gas - Using public view getStagePrice function
-        // 8420 gas - Reading directly from the storage variable s_tokenStagePrice + using exact array boundries
-        // without exact array boundries gas = ~11400
-        // 23803 gas - Using stagePrice memory array - its is because saving the 8 slot array = 16800 gas!
     }
 
     /////////////////////////////
@@ -1555,26 +1637,27 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(newStage, 7);
     }
 
-    function testGasNewStage() public {
-        createToken();
-
-        uint256 gasStart = gasleft();
-        tokenGenerator.calculateNewStage(tokenAddress, 150000);
-        uint256 gasUsed = gasStart - gasleft();
-        console.log("Gas used:", gasUsed);
-        // 22780 gas - Using tokenStageSupply memory array
-        // 7200 gas - Reading directly from s_tokenStageSupply
-    }
-
     /////////////////////////////////////
     // withdrawFailedLaunchFunds TESTs //
     /////////////////////////////////////
+    function testShouldRevertIfAddressIsZeroAddress() public {
+        createToken();
 
-    // Funding complete / deadline not reached = revert
-    // Funding complete / deadline reached = revert
-    // Funding not complete / deadline not reached = revert
-    // Funding not complete / deadline reached = NOT revert
-    function testShouldRevertIfFundingCompleteAndDeadlineNotReached() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ZeroAddressNotAllowed.selector
+            )
+        );
+        vm.prank(BUYER);
+        tokenGenerator.withdrawFailedLaunchFunds(address(0));
+    }
+
+    // 4 possibilities:
+    // Funding complete / deadline not reached =        REVERT
+    // Funding complete / deadline reached =            REVERT
+    // Funding not complete / deadline not reached =    REVERT
+    // Funding not complete / deadline reached =        NOT REVERT
+    function testShouldRevertIfFundingIsCompleteAndDeadlineNotReached() public {
         createToken();
 
         assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), false);
@@ -1611,7 +1694,7 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
     }
 
-    function testShouldRevertIfFundingCompleteAndDeadlineReached() public {
+    function testShouldRevertIfFundingIsCompleteAndDeadlineReached() public {
         createToken();
 
         assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), false);
@@ -1651,7 +1734,7 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
     }
 
-    function testShouldRevertIfFundingNotCompleteAndDeadlineNotReached()
+    function testShouldRevertIfFundingIsNotCompleteAndDeadlineNotReached()
         public
     {
         createToken();
@@ -1690,7 +1773,7 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
     }
 
-    function testShouldNotRevertIfFundingNotCompleteAndDeadlineReached()
+    function testShouldNotRevertIfFundingIsNotCompleteAndDeadlineReached()
         public
     {
         createToken();
@@ -1794,6 +1877,7 @@ contract TestTokenGenerator is StdCheats, Test {
                 TokenGenerator.TokenGenerator__NoEthToWithdraw.selector
             )
         );
+        // calling from address BUYER2 which didnt purchase any tokens
         vm.prank(BUYER2);
         tokenGenerator.withdrawFailedLaunchFunds(tokenAddress);
     }
@@ -1802,6 +1886,8 @@ contract TestTokenGenerator is StdCheats, Test {
         public
     {
         createToken();
+
+        assertEq(tokenGenerator.getBuyerEthAmountSpent(tokenAddress, BUYER), 0);
 
         uint256 tokenAmount = 150000;
 
@@ -2089,7 +2175,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         if (block.chainid == 1) {
             console.log(
-                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
             );
             return;
         } else {
@@ -2129,7 +2215,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         if (block.chainid == 1) {
             console.log(
-                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
             );
             return;
         } else {
@@ -2164,7 +2250,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         if (block.chainid == 1) {
             console.log(
-                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
             );
             return;
         } else {
@@ -2232,7 +2318,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         if (block.chainid == 1) {
             console.log(
-                "*** Test skipped on Fork (Owner address fallback, works on Anvil) ***"
+                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
             );
             return;
         } else {
@@ -2325,6 +2411,9 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.withdrawAccumulatedFees();
     }
 
+    ///////////////////////
+    // claimTokens TESTs //
+    ///////////////////////
     function testShouldRevertIfProvidedAddressIsZeroAddress() public {
         createTokenAndMaxPurchase();
 
@@ -2484,6 +2573,229 @@ contract TestTokenGenerator is StdCheats, Test {
         vm.expectEmit(true, true, true, false);
         emit TokensClaimed(tokenAddress, BUYER, TOKEN_AMOUNT_ONE);
         tokenGenerator.claimTokens(tokenAddress);
+    }
+
+    ////////////////////////////////////////////////////
+    // createPoolAndAddLiquidityAndBurnLPTokens TESTs //
+    ////////////////////////////////////////////////////
+    function testShouldRevertIfFundingIsNotActiveNoPurchase() public {
+        createToken();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfFundingIsNotActiveSinglePurchase() public {
+        createTokenAndPurchaseOneBuyer();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfFundingIsNotActiveMultiplePurchases() public {
+        createTokenAndPurchaseMultipleBuyers();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__FundingNotComplete.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    function testShouldRevertIfICOAlreadyActive() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__TokenICOActive.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+    }
+
+    // cant be directly tested because funding will not be active if the fund goal is not met
+    // function testShouldRevertIfFundingGoalIsNotMet() public {
+    // }
+
+    function testShouldNotRevertIfTheLiqudityPoolIsAlreadyCreated() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+
+        createToken();
+
+        // create liqudity pool before calling the "createPoolAndAddLiquidityAndBurnLPTokens" function
+        address poolAddress = factory.createPair(tokenAddress, weth);
+
+        purchaseMaxSupplyOfTokens();
+
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 startingWethContractBalance = weth.balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
+        );
+
+        assertEq(poolAddress, factory.getPair(tokenAddress, weth));
+
+        (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+
+        uint256 endingWethContractBalance = weth.balance;
+
+        assertEq(poolAddress, returnedPoolAddress);
+        assertGt(liqudity, 0);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
+    }
+
+    function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
+
+        assertEq(
+            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+            TOKEN_FUND_GOAL
+        );
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
+    }
+
+    function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
+
+        createToken();
+
+        // works either way the addresses are inputed
+        assertEq(factory.getPair(tokenAddress, weth), address(0));
+
+        purchaseMaxSupplyOfTokens();
+
+        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+        uint256 startingWethContractBalance = weth.balance;
+        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
+            tokenAddress
+        );
+
+        (address returnPoolAddress, ) = tokenGenerator
+            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        address poolAddress = factory.getPair(tokenAddress, weth);
+
+        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
+            .balance;
+
+        uint256 endingWethContractBalance = weth.balance;
+
+        assertEq(returnPoolAddress, poolAddress);
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
+        );
+        assertEq(
+            startingTokenGeneratorETHBalance - fundedEth,
+            endingTokenGeneratorETHBalance
+        );
+        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
+        assertEq(
+            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
+            0
+        );
+        assertEq(
+            startingWethContractBalance + fundedEth,
+            endingWethContractBalance
+        );
+    }
+
+    function testShouldEmitAnEvent() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
+        }
+        createTokenAndMaxPurchase();
+
+        address pair;
+
+        address wethAddress = IUniswapV2Router02(uniswapV2RouterAddress).WETH();
+
+        (address token0, address token1) = tokenAddress < wethAddress
+            ? (tokenAddress, wethAddress)
+            : (wethAddress, tokenAddress);
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                hex"ff",
+                uniswapV2FactoryAddress,
+                salt,
+                hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // UniswapV2Pair bytecode hash
+            )
+        );
+        pair = address(uint160(uint256(hash)));
+        console.log(pair);
+
+        vm.expectEmit(true, true, true, false);
+
+        emit PoolCreatedliquidityAddedLPTokensBurned(
+            tokenAddress,
+            pair,
+            2049390152191
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
     /////////////////////////////////////
@@ -3140,229 +3452,6 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
     }
 
-    ////////////////////////////////////////////////////
-    // createPoolAndAddLiquidityAndBurnLPTokens TESTs //
-    ////////////////////////////////////////////////////
-    function testShouldRevertIfFundingIsNotActiveNoPurchase() public {
-        createToken();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__FundingNotComplete.selector
-            )
-        );
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    }
-
-    function testShouldRevertIfFundingIsNotActiveSinglePurchase() public {
-        createTokenAndPurchaseOneBuyer();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__FundingNotComplete.selector
-            )
-        );
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    }
-
-    function testShouldRevertIfFundingIsNotActiveMultiplePurchases() public {
-        createTokenAndPurchaseMultipleBuyers();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__FundingNotComplete.selector
-            )
-        );
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    }
-
-    function testShouldRevertIfICOAlreadyActive() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        createTokenAndMaxPurchase();
-
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenGenerator.TokenGenerator__TokenICOActive.selector
-            )
-        );
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    }
-
-    // cant be directly tested because funding will not be active if the fund goal is not met
-    // function testShouldRevertIfFundingGoalIsNotMet() public {
-    // }
-
-    function testShouldNotRevertIfTheLiqudityPoolIsAlreadyCreated() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
-
-        createToken();
-
-        // create liqudity pool before calling the "createPoolAndAddLiquidityAndBurnLPTokens" function
-        address poolAddress = factory.createPair(tokenAddress, weth);
-
-        purchaseMaxSupplyOfTokens();
-
-        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
-            .balance;
-        uint256 startingWethContractBalance = weth.balance;
-        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
-            tokenAddress
-        );
-
-        assertEq(poolAddress, factory.getPair(tokenAddress, weth));
-
-        (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
-            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
-            .balance;
-
-        uint256 endingWethContractBalance = weth.balance;
-
-        assertEq(poolAddress, returnedPoolAddress);
-        assertGt(liqudity, 0);
-        assertEq(
-            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
-            0
-        );
-        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
-        assertEq(
-            Token(tokenAddress).balanceOf(address(tokenGenerator)),
-            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
-        );
-        assertEq(
-            startingTokenGeneratorETHBalance - fundedEth,
-            endingTokenGeneratorETHBalance
-        );
-        assertEq(
-            startingWethContractBalance + fundedEth,
-            endingWethContractBalance
-        );
-    }
-
-    function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        createTokenAndMaxPurchase();
-
-        assertEq(
-            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
-            TOKEN_FUND_GOAL
-        );
-
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-        assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
-    }
-
-    function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        IUniswapV2Factory factory = IUniswapV2Factory(uniswapV2FactoryAddress);
-
-        createToken();
-
-        // works either way the addresses are inputed
-        assertEq(factory.getPair(tokenAddress, weth), address(0));
-
-        purchaseMaxSupplyOfTokens();
-
-        uint256 startingTokenGeneratorETHBalance = address(tokenGenerator)
-            .balance;
-        uint256 startingWethContractBalance = weth.balance;
-        uint256 fundedEth = tokenGenerator.getTokenEthAmountFunded(
-            tokenAddress
-        );
-
-        (address returnPoolAddress, ) = tokenGenerator
-            .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-        address poolAddress = factory.getPair(tokenAddress, weth);
-
-        uint256 endingTokenGeneratorETHBalance = address(tokenGenerator)
-            .balance;
-
-        uint256 endingWethContractBalance = weth.balance;
-
-        assertEq(returnPoolAddress, poolAddress);
-        assertEq(
-            Token(tokenAddress).balanceOf(address(tokenGenerator)),
-            MAX_SUPPLY_WITHOUT_INIT_SUPPLY
-        );
-        assertEq(
-            startingTokenGeneratorETHBalance - fundedEth,
-            endingTokenGeneratorETHBalance
-        );
-        assertEq(Token(tokenAddress).balanceOf(poolAddress), 200000);
-        assertEq(
-            IUniswapV2Pair(poolAddress).balanceOf(address(tokenGenerator)),
-            0
-        );
-        assertEq(
-            startingWethContractBalance + fundedEth,
-            endingWethContractBalance
-        );
-    }
-
-    function testShouldEmitAnEvent() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        createTokenAndMaxPurchase();
-
-        address pair;
-
-        address wethAddress = IUniswapV2Router02(uniswapV2RouterAddress).WETH();
-
-        (address token0, address token1) = tokenAddress < wethAddress
-            ? (tokenAddress, wethAddress)
-            : (wethAddress, tokenAddress);
-        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-        bytes32 hash = keccak256(
-            abi.encodePacked(
-                hex"ff",
-                uniswapV2FactoryAddress,
-                salt,
-                hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // UniswapV2Pair bytecode hash
-            )
-        );
-        pair = address(uint160(uint256(hash)));
-        console.log(pair);
-
-        vm.expectEmit(true, true, true, false);
-
-        emit PoolCreatedliquidityAddedLPTokensBurned(
-            tokenAddress,
-            pair,
-            2049390152191
-        );
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-    }
-
     // *************************** Gas tests *************************** //
 
     // *** purchaseToken *** //
@@ -3437,6 +3526,43 @@ contract TestTokenGenerator is StdCheats, Test {
         // with chached storage pointer:    51 231
     }
 
+    function testGascalculatePurchaseCost() public {
+        createToken();
+
+        uint256 tokenAmount = 148987;
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 gasStart = gasleft();
+        tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // 8462 gas - Using public view getStagePrice function
+        // 8420 gas - Reading directly from the storage variable s_tokenStagePrice + using exact array boundries
+        // without exact array boundries gas = ~11400
+        // 23803 gas - Using stagePrice memory array - its is because saving the 8 slot array = 16800 gas!
+    }
+
+    // *** calculateNewStage *** //
+    function testGasNewStage() public {
+        createToken();
+
+        uint256 gasStart = gasleft();
+        tokenGenerator.calculateNewStage(tokenAddress, 150000);
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("Gas used:", gasUsed);
+        // 22780 gas - Using tokenStageSupply memory array
+        // 7200 gas - Reading directly from s_tokenStageSupply
+    }
+
+    // *** createPoolAndAddLiquidityAndBurnLPTokens *** //
     function testGasCreatePairAddLiqudityBurnTokens() public {
         if (!isMainnetFork()) {
             console.log(
