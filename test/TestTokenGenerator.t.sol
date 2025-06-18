@@ -52,25 +52,17 @@ contract TestTokenGenerator is StdCheats, Test {
         uint256 tokenAmountClaimed
     );
 
-    TokenGenerator public tokenGenerator;
-    HelperConfig public helperConfig;
+    TokenGenerator tokenGenerator;
+    HelperConfig helperConfig;
 
-    // IUniswapV2Factory public uniswapV2Factory;
-    // IUniswapV2Router02 public uniswapV2Router;
-
-    uint256 public fee;
-    uint256 deployerKey;
+    uint256 fee;
+    address account;
     uint256 icoDeadlineInDays;
-
     address uniswapV2FactoryAddress;
     address uniswapV2RouterAddress;
+
     address weth;
-
     address tokenAddress;
-
-    uint256 STARTING_INCREMENT = 0.0001 ether; // change if defined differently in the TokenGenerator contract
-    uint256 INCREMENT_TWO = STARTING_INCREMENT * 2;
-    uint256 INCREMENT_THREE = STARTING_INCREMENT * 3;
 
     uint256 ONE_DAY_IN_SECONDS = 86400;
 
@@ -95,7 +87,6 @@ contract TestTokenGenerator is StdCheats, Test {
     uint256 INITIAL_TOKEN_SUPPLY = 200000;
     uint256 MAX_SUPPLY_WITHOUT_INIT_SUPPLY = 800000;
     uint256 TOKEN_FUND_GOAL = 21 ether;
-    uint256 INCORRECT_FUND_GOAL = 99 ether;
 
     uint256 TOKEN_AMOUNT_ONE = 50000;
     uint256 TOKEN_AMOUNT_TWO = 100000;
@@ -107,7 +98,7 @@ contract TestTokenGenerator is StdCheats, Test {
         (tokenGenerator, helperConfig) = deployTokenGenerator.run();
         (
             fee,
-            deployerKey,
+            account,
             icoDeadlineInDays,
             uniswapV2FactoryAddress,
             uniswapV2RouterAddress
@@ -125,9 +116,9 @@ contract TestTokenGenerator is StdCheats, Test {
         vm.deal(BUYER4, STARTING_BALANCE);
     }
 
-    //////////////////////
-    // helper functions //
-    //////////////////////
+    // ***************************************************************** //
+    // *********************** Helper functions ************************ //
+    // ***************************************************************** //
     function createToken() public {
         vm.prank(TOKEN_OWNER);
 
@@ -251,7 +242,9 @@ contract TestTokenGenerator is StdCheats, Test {
         return block.chainid == 1;
     }
 
-    // *************************** TESTS *************************** //
+    // ***************************************************************** //
+    // **************************** TESTs ****************************** //
+    // ***************************************************************** //
 
     //////////////////////
     // constructor TEST //
@@ -283,7 +276,7 @@ contract TestTokenGenerator is StdCheats, Test {
         uint256 startingBalance = address(tokenGenerator).balance;
 
         vm.prank(BUYER);
-        vm.expectRevert("ETH not accepted");
+        vm.expectRevert("TokenGenerator: Direct ETH transfers not supported");
         (bool success, ) = address(tokenGenerator).call{value: amount}("");
         require(success, "Call failed");
 
@@ -539,7 +532,7 @@ contract TestTokenGenerator is StdCheats, Test {
         vm.prank(TOKEN_OWNER);
         vm.expectEmit(true, true, true, false);
         emit TokenCreated(
-            address(0xa16E02E87b7454126E5E10d957A927A7F5B5d2be),
+            address(0xc7c2e0F79d0cE35A24db1A4Ba2e7c91060c5255A),
             INITIAL_TOKEN_SUPPLY,
             TOKEN_OWNER
         );
@@ -2173,14 +2166,7 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance1:", endingOwnerBalance1);
         console.log("Contract endingContractBalance1:", endingContractBalance1);
 
-        if (block.chainid == 1) {
-            console.log(
-                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
-            );
-            return;
-        } else {
-            assertEq(endingOwnerBalance1, startingOwnerBalance1 + fee);
-        }
+        assertEq(endingOwnerBalance1, startingOwnerBalance1 + fee);
 
         assertEq(endingContractBalance1, startingContractBalance1 - fee);
 
@@ -2213,14 +2199,7 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance2:", endingOwnerBalance2);
         console.log("Contract endingContractBalance2:", endingContractBalance2);
 
-        if (block.chainid == 1) {
-            console.log(
-                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
-            );
-            return;
-        } else {
-            assertEq(endingOwnerBalance2, startingOwnerBalance2 + (2 * fee));
-        }
+        assertEq(endingOwnerBalance2, startingOwnerBalance2 + (2 * fee));
         assertEq(endingContractBalance2, startingContractBalance2 - (2 * fee));
     }
 
@@ -2248,15 +2227,7 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance:", endingOwnerBalance);
         console.log("Contract endingContractBalance:", endingContractBalance);
 
-        if (block.chainid == 1) {
-            console.log(
-                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
-            );
-            return;
-        } else {
-            assertEq(endingOwnerBalance, startingOwnerBalance + fee);
-        }
-
+        assertEq(endingOwnerBalance, startingOwnerBalance + fee);
         assertEq(endingContractBalance, startingContractBalance - fee);
     }
 
@@ -2316,18 +2287,10 @@ contract TestTokenGenerator is StdCheats, Test {
         console.log("Owner endingOwnerBalance:", endingOwnerBalance);
         console.log("Contract endingContractBalance:", endingContractBalance);
 
-        if (block.chainid == 1) {
-            console.log(
-                "*** Test skipped on Fork (Owner address fallback error, works on Anvil) ***"
-            );
-            return;
-        } else {
-            assertEq(
-                endingOwnerBalance,
-                startingOwnerBalance + (buyers.length * fee)
-            );
-        }
-
+        assertEq(
+            endingOwnerBalance,
+            startingOwnerBalance + (buyers.length * fee)
+        );
         assertEq(
             endingContractBalance,
             startingContractBalance - (buyers.length * fee)
@@ -2578,7 +2541,18 @@ contract TestTokenGenerator is StdCheats, Test {
     ////////////////////////////////////////////////////
     // createPoolAndAddLiquidityAndBurnLPTokens TESTs //
     ////////////////////////////////////////////////////
-    function testShouldRevertIfFundingIsNotActiveNoPurchase() public {
+    function testShouldRevertIfTokenAddressIsZeroAddress() public {
+        createTokenAndMaxPurchase();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TokenGenerator.TokenGenerator__ZeroAddressNotAllowed.selector
+            )
+        );
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(address(0));
+    }
+
+    function testShouldRevertIfFundingIsNotActive_WithNoPurchase() public {
         createToken();
 
         vm.expectRevert(
@@ -2589,7 +2563,7 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
-    function testShouldRevertIfFundingIsNotActiveSinglePurchase() public {
+    function testShouldRevertIfFundingIsNotActive_SinglePurchase() public {
         createTokenAndPurchaseOneBuyer();
 
         vm.expectRevert(
@@ -2600,7 +2574,7 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
-    function testShouldRevertIfFundingIsNotActiveMultiplePurchases() public {
+    function testShouldRevertIfFundingIsNotActive_MultiplePurchases() public {
         createTokenAndPurchaseMultipleBuyers();
 
         vm.expectRevert(
@@ -2658,6 +2632,10 @@ contract TestTokenGenerator is StdCheats, Test {
         );
 
         assertEq(poolAddress, factory.getPair(tokenAddress, weth));
+        assertEq(
+            Token(tokenAddress).balanceOf(address(tokenGenerator)),
+            MAX_SUPPLY_WITHOUT_INIT_SUPPLY + INITIAL_TOKEN_SUPPLY
+        );
 
         (address returnedPoolAddress, uint256 liqudity) = tokenGenerator
             .createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
@@ -2688,7 +2666,9 @@ contract TestTokenGenerator is StdCheats, Test {
         );
     }
 
-    function testShoulResetTheETHFundedToZeroAfterSuccessfullCall() public {
+    function testShoulResetTheETHFundedToZeroAndICOActiveToTrue_AfterSuccessfullCall()
+        public
+    {
         if (!isMainnetFork()) {
             console.log(
                 "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
@@ -2701,10 +2681,12 @@ contract TestTokenGenerator is StdCheats, Test {
             tokenGenerator.getTokenEthAmountFunded(tokenAddress),
             TOKEN_FUND_GOAL
         );
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
 
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
 
         assertEq(tokenGenerator.getTokenEthAmountFunded(tokenAddress), 0);
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
     }
 
     function testShouldCreatePoolAddLiqudityAndBurnLPTokens() public {
@@ -2773,6 +2755,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         address wethAddress = IUniswapV2Router02(uniswapV2RouterAddress).WETH();
 
+        // calculate the pair address using Create2
         (address token0, address token1) = tokenAddress < wethAddress
             ? (tokenAddress, wethAddress)
             : (wethAddress, tokenAddress);
@@ -2798,26 +2781,13 @@ contract TestTokenGenerator is StdCheats, Test {
         tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
     }
 
-    /////////////////////////////////////
-    // getTokenDeadlineTimeLeft  TESTs //
-    /////////////////////////////////////
-    function testFuzz_ShouldGetTimeLeftToICODeadline(uint256 _amount) public {
-        uint256 amount = bound(_amount, 1, icoDeadlineInDays * 86400);
+    // ***************************************************************** //
+    // ******************** GGETTER FUNCTIONS TESTs ******************** //
+    // ***************************************************************** //
 
-        createToken();
-
-        vm.warp(block.timestamp + amount);
-        vm.roll(block.number + 1);
-
-        assertEq(
-            tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
-            amount
-        );
-    }
-
-    ////////////////////////////
-    // getCurrentSupply TESTs //
-    ////////////////////////////
+    ////////////////////////////////////////////////
+    // getCurrentSupplyWithoutInitialSupply TESTs //
+    ////////////////////////////////////////////////
     function testShouldGetCurrentSupplyWithoutInitialSupply() public {
         createToken();
 
@@ -2851,56 +2821,52 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(endingSupply, tokenAmount);
     }
 
-    //////////////////////////////////////
-    // getElapsedTimeSinceCreation TEST //
-    //////////////////////////////////////
-    function testShouldGetTimeElapsedSinceTokenCreation() public {
+    ///////////////////////////////////
+    // getTokenEthAmountFunded TESTs //
+    ///////////////////////////////////
+    function testShouldReturnTokenETHAmountCurrentlyFunded() public {
         createToken();
 
-        assertEq(tokenGenerator.getElapsedTimeSinceCreation(tokenAddress), 0);
+        uint256 tokenAmount = 150000;
 
-        vm.warp(block.timestamp + 5 days);
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(
+            tokenAddress,
+            tokenAmount
+        );
+
+        assertEq(
+            tokenGenerator.getTokenEthAmountFunded(tokenAddress),
+            totalPrice
+        );
+    }
+
+    /////////////////////////////////////
+    // getTokenDeadlineTimeLeft  TESTs //
+    /////////////////////////////////////
+    function testFuzz_ShouldGetTimeLeftToICODeadline(uint256 _amount) public {
+        uint256 amount = bound(_amount, 1, icoDeadlineInDays * 86400);
+
+        createToken();
+
+        vm.warp(block.timestamp + amount);
         vm.roll(block.number + 1);
 
         assertEq(
             tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
-            5 days
+            amount
         );
-    }
-
-    ////////////////////////////////////
-    // getTokenCreationTimestamp TEST //
-    ////////////////////////////////////
-    function testShouldReturnTheTimestampWhenTheTokenWasCreated() public {
-        createToken();
-
-        uint256 timeStamp = block.timestamp;
-
-        assertEq(
-            tokenGenerator.getTokenCreationTimestamp(tokenAddress),
-            timeStamp
-        );
-    }
-
-    ////////////////////////////
-    // getTokenICOStatus TEST //
-    ////////////////////////////
-    function testShouldReturnICOStatus() public {
-        if (!isMainnetFork()) {
-            console.log(
-                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
-            );
-            vm.skip(true);
-        }
-        createToken();
-
-        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
-
-        purchaseMaxSupplyOfTokens();
-
-        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
-
-        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
     }
 
     //////////////////////////////////
@@ -2911,6 +2877,7 @@ contract TestTokenGenerator is StdCheats, Test {
 
         assertEq(tokenGenerator.getCurrentPricingStage(tokenAddress), 0);
 
+        // with every buy the pricing stage should increase by 1
         uint24[4] memory amounts = [200000, 200000, 100000, 50000];
 
         for (uint256 i = 0; i < amounts.length; i++) {
@@ -2942,6 +2909,75 @@ contract TestTokenGenerator is StdCheats, Test {
         }
     }
 
+    ///////////////////////////////////
+    // getTokenFundingComplete TESTs //
+    ///////////////////////////////////
+    function testShouldReturnIfFundingIsComplete() public {
+        createToken();
+
+        assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), false);
+
+        uint256 tokenAmount1 = 150000;
+
+        uint256 newStage1 = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount1
+        );
+
+        uint256 totalPrice1 = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount1,
+            newStage1
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice1}(
+            tokenAddress,
+            tokenAmount1
+        );
+
+        assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), false);
+
+        // purchase the rest of tokens left
+        uint256 tokenAmount2 = 800000 - tokenAmount1;
+
+        uint256 newStage2 = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            tokenAmount2
+        );
+
+        uint256 totalPrice2 = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            tokenAmount2,
+            newStage2
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice2}(
+            tokenAddress,
+            tokenAmount2
+        );
+
+        assertEq(tokenGenerator.getTokenFundingComplete(tokenAddress), true);
+    }
+
+    //////////////////////////////////////
+    // getElapsedTimeSinceCreation TEST //
+    //////////////////////////////////////
+    function testShouldGetTimeElapsedSinceTokenCreation() public {
+        createToken();
+
+        assertEq(tokenGenerator.getElapsedTimeSinceCreation(tokenAddress), 0);
+
+        vm.warp(block.timestamp + 5 days);
+        vm.roll(block.number + 1);
+
+        assertEq(
+            tokenGenerator.getElapsedTimeSinceCreation(tokenAddress),
+            5 days
+        );
+    }
+
     //////////////////////////////////
     // isTokenDeadlineExpired TESTs //
     //////////////////////////////////
@@ -2959,6 +2995,51 @@ contract TestTokenGenerator is StdCheats, Test {
         vm.roll(block.number + 1);
 
         assertEq(tokenGenerator.isTokenDeadlineExpired(tokenAddress), true);
+    }
+
+    //////////////////////////
+    // getCreationFee TESTs //
+    //////////////////////////
+    function testShouldReturnFee() public view {
+        uint256 expectedFee = 1000000000000000;
+
+        assertEq(tokenGenerator.getCreationFee(), expectedFee);
+    }
+
+    ////////////////////////////////
+    // getIcoDeadlineInDays TESTs //
+    ////////////////////////////////
+    function testShouldReturnDeadlineInDays() public view {
+        uint256 expectedDeadline = 30;
+
+        assertEq(tokenGenerator.getIcoDeadlineInDays(), expectedDeadline);
+    }
+
+    //////////////////////////////////////
+    // getUniswapV2FactoryAddress TESTS //
+    //////////////////////////////////////
+    function testShouldReturnUniswapFactoryAddress() public view {
+        assertEq(
+            tokenGenerator.getUniswapV2FactoryAddress(),
+            uniswapV2FactoryAddress
+        );
+    }
+
+    /////////////////////////////////////
+    // getUniswapV2RouterAddress TESTS //
+    /////////////////////////////////////
+    function testShouldReturnUniswapRouterAddress() public view {
+        assertEq(
+            tokenGenerator.getUniswapV2RouterAddress(),
+            uniswapV2RouterAddress
+        );
+    }
+
+    ///////////////////////////
+    // getOwnerAddress TESTs //
+    ///////////////////////////
+    function testShouldReturnTokenGeneratorOwnerAddress() public view {
+        assertEq(tokenGenerator.getOwnerAddress(), account);
     }
 
     /////////////////////////////
@@ -2986,30 +3067,6 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(tokenGenerator.getAccumulatedFees(), 0);
     }
 
-    ////////////////////////
-    // getStagePrice TEST //
-    ////////////////////////
-    function testShouldReturnStagePrice() public {
-        createToken();
-
-        uint48[8] memory stagePrices = [
-            3000000000000, //   0.000003  ETH per token
-            4500000000000, //   0.0000045 ETH per token
-            7500000000000, //   0.0000075 ETH per token
-            20000000000000, //  0.00002   ETH per token
-            35000000000000, //  0.000035  ETH per token
-            55000000000000, //  0.000055  ETH per token
-            75000000000000, //  0.000075  ETH per token
-            95000000000000 //   0.000095  ETH per token
-        ];
-
-        for (uint256 i = 0; i < stagePrices.length; i++) {
-            uint256 stagePrice = stagePrices[i];
-
-            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
-        }
-    }
-
     /////////////////////////
     // getStageSupply TEST //
     /////////////////////////
@@ -3032,35 +3089,6 @@ contract TestTokenGenerator is StdCheats, Test {
 
             assertEq(tokenGenerator.getStageSupply(i), stageSupply);
         }
-    }
-
-    //////////////////////////
-    // getTokenCreator TEST //
-    //////////////////////////
-    function testShouldReturnTheTokenCreator() public {
-        vm.prank(TOKEN_OWNER);
-        address token1 = tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL
-        );
-
-        assertEq(tokenGenerator.getTokenCreator(token1), TOKEN_OWNER);
-
-        vm.prank(TOKEN_OWNER2);
-        address token2 = tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL
-        );
-
-        assertEq(tokenGenerator.getTokenCreator(token2), TOKEN_OWNER2);
-
-        vm.prank(TOKEN_OWNER3);
-        address token3 = tokenGenerator.createToken{value: fee}(
-            TOKEN_NAME,
-            TOKEN_SYMBOL
-        );
-
-        assertEq(tokenGenerator.getTokenCreator(token3), TOKEN_OWNER3);
     }
 
     /////////////////////////////////////
@@ -3114,6 +3142,62 @@ contract TestTokenGenerator is StdCheats, Test {
                     stageSupplies[i + 1]
                 );
             }
+        }
+    }
+
+    //////////////////////////////////
+    // getAvailableStageSupply TEST //
+    //////////////////////////////////
+    function testFuzz_ShouldReturnRemainingSupplyInCurrentStage(
+        uint256 _amount
+    ) public {
+        uint256 amount = bound(_amount, 1, 199999);
+
+        createToken();
+
+        assertEq(tokenGenerator.getAvailableStageSupply(tokenAddress), 200000);
+
+        uint256 newStage = tokenGenerator.calculateNewStage(
+            tokenAddress,
+            amount
+        );
+
+        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
+            tokenAddress,
+            amount,
+            newStage
+        );
+
+        vm.prank(BUYER);
+        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
+
+        assertEq(
+            tokenGenerator.getAvailableStageSupply(tokenAddress),
+            200000 - amount
+        );
+    }
+
+    ////////////////////////
+    // getStagePrice TEST //
+    ////////////////////////
+    function testShouldReturnStagePrice() public {
+        createToken();
+
+        uint48[8] memory stagePrices = [
+            3000000000000, //   0.000003  ETH per token
+            4500000000000, //   0.0000045 ETH per token
+            7500000000000, //   0.0000075 ETH per token
+            20000000000000, //  0.00002   ETH per token
+            35000000000000, //  0.000035  ETH per token
+            55000000000000, //  0.000055  ETH per token
+            75000000000000, //  0.000075  ETH per token
+            95000000000000 //   0.000095  ETH per token
+        ];
+
+        for (uint256 i = 0; i < stagePrices.length; i++) {
+            uint256 stagePrice = stagePrices[i];
+
+            assertEq(tokenGenerator.getStagePrice(i), stagePrice);
         }
     }
 
@@ -3177,48 +3261,39 @@ contract TestTokenGenerator is StdCheats, Test {
         }
     }
 
-    //////////////////////////////////
-    // getAvailableStageSupply TEST //
-    //////////////////////////////////
-    function testFuzz_ShouldReturnRemainingSupplyInCurrentStage(
-        uint256 _amount
-    ) public {
-        uint256 amount = bound(_amount, 1, 199999);
-
+    ////////////////////////////////////
+    // getTokenCreationTimestamp TEST //
+    ////////////////////////////////////
+    function testShouldReturnTheTimestampWhenTheTokenWasCreated() public {
         createToken();
 
-        assertEq(tokenGenerator.getAvailableStageSupply(tokenAddress), 200000);
-
-        uint256 newStage = tokenGenerator.calculateNewStage(
-            tokenAddress,
-            amount
-        );
-
-        uint256 totalPrice = tokenGenerator.calculatePurchaseCost(
-            tokenAddress,
-            amount,
-            newStage
-        );
-
-        vm.prank(BUYER);
-        tokenGenerator.purchaseToken{value: totalPrice}(tokenAddress, amount);
+        uint256 timeStamp = block.timestamp;
 
         assertEq(
-            tokenGenerator.getAvailableStageSupply(tokenAddress),
-            200000 - amount
+            tokenGenerator.getTokenCreationTimestamp(tokenAddress),
+            timeStamp
         );
     }
 
-    ///////////////////////////////
-    // getTotalTokensAmount TEST //
-    ///////////////////////////////
-    function testShouldReturnAmountOfTokensCreated() public {
-        for (uint256 i = 1; i < 10; i++) {
-            vm.prank(TOKEN_OWNER);
-            tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
-
-            assertEq(tokenGenerator.getTotalTokensAmount(), i);
+    ////////////////////////////
+    // getTokenICOStatus TEST //
+    ////////////////////////////
+    function testShouldReturnICOStatus() public {
+        if (!isMainnetFork()) {
+            console.log(
+                "*** Test skipped on Anvil (EVM Revert on Anvil, works on fork) ***"
+            );
+            vm.skip(true);
         }
+        createToken();
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), false);
+
+        purchaseMaxSupplyOfTokens();
+
+        tokenGenerator.createPoolAndAddLiquidityAndBurnLPTokens(tokenAddress);
+
+        assertEq(tokenGenerator.getTokenICOStatus(tokenAddress), true);
     }
 
     //////////////////////////
@@ -3234,6 +3309,47 @@ contract TestTokenGenerator is StdCheats, Test {
 
             assertEq(tokenGenerator.getTokenAddress(i), newTokenAddress);
         }
+    }
+
+    ///////////////////////////////
+    // getTotalTokensAmount TEST //
+    ///////////////////////////////
+    function testShouldReturnAmountOfTokensCreated() public {
+        for (uint256 i = 1; i < 10; i++) {
+            vm.prank(TOKEN_OWNER);
+            tokenGenerator.createToken{value: fee}(TOKEN_NAME, TOKEN_SYMBOL);
+
+            assertEq(tokenGenerator.getTotalTokensAmount(), i);
+        }
+    }
+
+    //////////////////////////
+    // getTokenCreator TEST //
+    //////////////////////////
+    function testShouldReturnTheTokenCreator() public {
+        vm.prank(TOKEN_OWNER);
+        address token1 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token1), TOKEN_OWNER);
+
+        vm.prank(TOKEN_OWNER2);
+        address token2 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token2), TOKEN_OWNER2);
+
+        vm.prank(TOKEN_OWNER3);
+        address token3 = tokenGenerator.createToken{value: fee}(
+            TOKEN_NAME,
+            TOKEN_SYMBOL
+        );
+
+        assertEq(tokenGenerator.getTokenCreator(token3), TOKEN_OWNER3);
     }
 
     ////////////////////////////////////////
@@ -3377,35 +3493,15 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(tokenGenerator.getBuyerEthAmountSpent(token2, BUYER), 0);
     }
 
-    /////////////////////////
-    // getCreationFee TEST //
-    /////////////////////////
-    function testShouldReturnTokenCreationFee() public {
+    ///////////////////////
+    // getMaxSupply TEST //
+    ///////////////////////
+    function testShouldReturnMaxSupply() public {
         createToken();
 
-        assertEq(tokenGenerator.getCreationFee(), fee);
-    }
+        uint256 expectedMaxSupply = 1000000;
 
-    //////////////////////////
-    // getOwnerAddress TEST //
-    //////////////////////////
-    function testShouldReturnOwnerAddress() public {
-        createToken();
-
-        address expectedAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
-
-        assertEq(tokenGenerator.getOwnerAddress(), expectedAddress);
-    }
-
-    ///////////////////////////////
-    // getIcoDeadlineInDays TEST //
-    ///////////////////////////////
-    function testShouldReturnIcoDeadline() public {
-        createToken();
-
-        uint256 expectedDeadline = 30;
-
-        assertEq(tokenGenerator.getIcoDeadlineInDays(), expectedDeadline);
+        assertEq(tokenGenerator.getMaxSupply(), expectedMaxSupply);
     }
 
     ///////////////////////////
@@ -3421,26 +3517,6 @@ contract TestTokenGenerator is StdCheats, Test {
         );
     }
 
-    ///////////////////////
-    // getMaxSupply TEST //
-    ///////////////////////
-    function testShouldReturnMaxSupply() public {
-        createToken();
-
-        uint256 expectedMaxSupply = 1000000;
-
-        assertEq(tokenGenerator.getMaxSupply(), expectedMaxSupply);
-    }
-
-    //////////////////////
-    // getFundGoal TEST //
-    //////////////////////
-    function testShouldReturnFundGoal() public {
-        createToken();
-
-        assertEq(tokenGenerator.getFundGoal(), TOKEN_FUND_GOAL);
-    }
-
     /////////////////////////////
     // getTradeableSupply TEST //
     /////////////////////////////
@@ -3452,7 +3528,18 @@ contract TestTokenGenerator is StdCheats, Test {
         assertEq(tokenGenerator.getTradeableSupply(), expectedTradeableSupply);
     }
 
+    //////////////////////
+    // getFundGoal TEST //
+    //////////////////////
+    function testShouldReturnFundGoal() public {
+        createToken();
+
+        assertEq(tokenGenerator.getFundGoal(), TOKEN_FUND_GOAL);
+    }
+
+    // ***************************************************************** //
     // *************************** Gas tests *************************** //
+    // ***************************************************************** //
 
     // *** purchaseToken *** //
     function testCheckGasCostWithPurchaseAndCreatePairAddLiqudityBurnTokens()
