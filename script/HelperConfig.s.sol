@@ -5,21 +5,18 @@ pragma solidity 0.8.27;
 import {Script} from "../lib/forge-std/src/Script.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import {MockWETH} from "../script/MockWETH.s.sol";
+import {WETH} from "../script/MockWETH.s.sol";
 import {StdCheats} from "../../lib/forge-std/src/Test.sol";
 
 contract HelperConfig is Script {
     NetworkConfig public activeNetworkConfig;
     IUniswapV2Factory public uniswapV2Factory;
     IUniswapV2Router02 public uniswapV2Router;
-    MockWETH mockWeth;
-
-    uint256 public constant DEFAULT_ANVIL_PRIVATE_KEY =
-        0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+    WETH mockWeth;
 
     struct NetworkConfig {
         uint256 fee;
-        uint256 deployerKey;
+        address account;
         uint256 icoDeadlineInDays;
         address uniswapV2FactoryAddress;
         address uniswapV2RouterAddress;
@@ -35,10 +32,10 @@ contract HelperConfig is Script {
         }
     }
 
-    function getMainNetEthConfig() public view returns (NetworkConfig memory) {
+    function getMainNetEthConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory mainNetNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: vm.envUint("PRIVATE_KEY"),
+            account: 0x8F2c4E4aF8D7be5878468559a7a032C5887e2D33,
             icoDeadlineInDays: 30,
             uniswapV2FactoryAddress: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f,
             uniswapV2RouterAddress: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
@@ -46,10 +43,10 @@ contract HelperConfig is Script {
         return mainNetNetworkConfig;
     }
 
-    function getSepoliaEthConfig() public view returns (NetworkConfig memory) {
+    function getSepoliaEthConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory sepoliaNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: vm.envUint("PRIVATE_KEY"),
+            account: 0x8F2c4E4aF8D7be5878468559a7a032C5887e2D33,
             icoDeadlineInDays: 30,
             uniswapV2FactoryAddress: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f,
             uniswapV2RouterAddress: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
@@ -65,11 +62,11 @@ contract HelperConfig is Script {
         uniswapV2Factory = IUniswapV2Factory(
             deployCode(
                 "./out/UniswapV2Factory.sol/UniswapV2Factory.json",
-                abi.encode(address(this))
+                abi.encode(555555555555555)
             )
         );
 
-        mockWeth = new MockWETH();
+        mockWeth = new WETH();
 
         uniswapV2Router = IUniswapV2Router02(
             deployCode(
@@ -80,10 +77,12 @@ contract HelperConfig is Script {
 
         NetworkConfig memory anvilNetworkConfig = NetworkConfig({
             fee: 1000000000000000, // 0.001 ETH
-            deployerKey: DEFAULT_ANVIL_PRIVATE_KEY,
+            account: 0x8F2c4E4aF8D7be5878468559a7a032C5887e2D33,
             icoDeadlineInDays: 30,
             uniswapV2FactoryAddress: address(uniswapV2Factory),
             uniswapV2RouterAddress: address(uniswapV2Router)
+            // uniswapV2FactoryAddress: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f,
+            // uniswapV2RouterAddress: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
         });
         return anvilNetworkConfig;
     }
